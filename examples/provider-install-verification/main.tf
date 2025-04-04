@@ -10,4 +10,18 @@ provider "oystehr" {
 
 }
 
-data "oystehr_ds" "example" {}
+resource "oystehr_fhir_resource" "example" {
+  type = "Patient"
+  data = {
+    resourceType = "Patient"
+    id           = "example"
+    active       = true
+    name = [
+      {
+        use    = "official"
+        family = "Doe"
+        given  = ["John"]
+      }
+    ]
+  }
+}

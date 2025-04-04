@@ -2,19 +2,23 @@ package provider
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
 var _ provider.Provider = &OystehrProvider{}
 
 type OystehrProviderModel struct {
-	Credentials types.String `tfsdk:"credentials"`
+	ProjectID    types.String `tfsdk:"project_id"`
+	AccessToken  types.String `tfsdk:"access_token"`
+	ClientID     types.String `tfsdk:"client_id"`
+	ClientSecret types.String `tfsdk:"client_secret"`
 }
 
 type OystehrProvider struct {
@@ -29,8 +33,20 @@ func (o *OystehrProvider) Metadata(ctx context.Context, req provider.MetadataReq
 func (o *OystehrProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"credentials": schema.StringAttribute{
-				MarkdownDescription: "Oystehr credentials",
+			"project_id": schema.StringAttribute{
+				MarkdownDescription: "Oystehr project ID",
+				Required:            true,
+			},
+			"access_token": schema.StringAttribute{
+				MarkdownDescription: "Oystehr developer access token",
+				Optional:            true,
+			},
+			"client_id": schema.StringAttribute{
+				MarkdownDescription: "Oystehr developer M2M client ID",
+				Optional:            true,
+			},
+			"client_secret": schema.StringAttribute{
+				MarkdownDescription: "Oystehr developer M2M client secret",
 				Optional:            true,
 			},
 		},
@@ -43,12 +59,28 @@ func (o *OystehrProvider) Configure(ctx context.Context, req provider.ConfigureR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if data.Credentials.IsNull() {
-		// throw error
+	hasAccessToken := false
+	hasClientCreds := false
+	if !data.AccessToken.IsUnknown() {
+		hasAccessToken = true
+	}
+	if !data.ClientID.IsUnknown() && !data.ClientSecret.IsUnknown() {
+		hasClientCreds = true
+	}
+	// Either neither present or both present
+	if hasAccessToken == hasClientCreds {
+		resp.Diagnostics.AddAttributeError(path.Root("access_token"), "Misconfigured credentials", "Either access token or client ID and client secret must be known")
+	}
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	client := http.DefaultClient
+	client := client.New(client.ClientConfig{
+		ProjectID:    data.ProjectID.ValueStringPointer(),
+		AccessToken:  data.AccessToken.ValueStringPointer(),
+		ClientID:     data.ClientID.ValueStringPointer(),
+		ClientSecret: data.ClientSecret.ValueStringPointer(),
+	})
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
@@ -58,7 +90,9 @@ func (o *OystehrProvider) DataSources(ctx context.Context) []func() datasource.D
 }
 
 func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		NewFhirResource,
+	}
 }
 
 func New(version string) func() provider.Provider {
