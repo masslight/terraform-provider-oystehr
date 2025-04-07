@@ -72,7 +72,7 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 	resourceData := make(map[string]interface{})
 	plan.Data.ElementsAs(ctx, &resourceData, false)
 
-	resource, err := r.client.CreateFhirResource(ctx, plan.Type.ValueString(), resourceData)
+	resource, err := r.client.Fhir.CreateResource(ctx, plan.Type.ValueString(), resourceData)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating FHIR Resource", err.Error())
 		return
@@ -97,7 +97,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	resource, err := r.client.GetFhirResource(ctx, state.Type.ValueString(), state.ID.ValueString())
+	resource, err := r.client.Fhir.GetResource(ctx, state.Type.ValueString(), state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading FHIR Resource", err.Error())
 		return
@@ -131,7 +131,7 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resourceData := make(map[string]interface{})
 	plan.Data.ElementsAs(ctx, &resourceData, false)
 
-	resource, err := r.client.UpdateFhirResource(ctx, plan.Type.ValueString(), plan.ID.ValueString(), resourceData)
+	resource, err := r.client.Fhir.UpdateResource(ctx, plan.Type.ValueString(), plan.ID.ValueString(), resourceData)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating FHIR Resource", err.Error())
 		return
@@ -161,7 +161,7 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	err := r.client.DeleteFhirResource(ctx, state.Type.ValueString(), state.ID.ValueString())
+	err := r.client.Fhir.DeleteResource(ctx, state.Type.ValueString(), state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting FHIR Resource", err.Error())
 		return
