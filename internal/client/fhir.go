@@ -12,10 +12,6 @@ type fhirClient struct {
 	config ClientConfig
 }
 
-func (c *fhirClient) Request() {
-
-}
-
 func newFhirClient(config ClientConfig) *fhirClient {
 	return &fhirClient{config}
 }
