@@ -38,15 +38,15 @@ func (o *OystehrProvider) Schema(ctx context.Context, req provider.SchemaRequest
 				Required:            true,
 			},
 			"access_token": schema.StringAttribute{
-				MarkdownDescription: "Oystehr developer access token",
+				MarkdownDescription: "Oystehr developer temporary access token",
 				Optional:            true,
 			},
 			"client_id": schema.StringAttribute{
-				MarkdownDescription: "Oystehr developer M2M client ID",
+				MarkdownDescription: "Oystehr developer client ID",
 				Optional:            true,
 			},
 			"client_secret": schema.StringAttribute{
-				MarkdownDescription: "Oystehr developer M2M client secret",
+				MarkdownDescription: "Oystehr developer client secret",
 				Optional:            true,
 			},
 		},
@@ -61,10 +61,10 @@ func (o *OystehrProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 	hasAccessToken := false
 	hasClientCreds := false
-	if !data.AccessToken.IsUnknown() {
+	if !data.AccessToken.IsNull() {
 		hasAccessToken = true
 	}
-	if !data.ClientID.IsUnknown() && !data.ClientSecret.IsUnknown() {
+	if !data.ClientID.IsNull() && !data.ClientSecret.IsNull() {
 		hasClientCreds = true
 	}
 	// Either neither present or both present
