@@ -9,6 +9,67 @@ import (
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
+type Application struct {
+	ID                     types.String `tfsdk:"id"`
+	Name                   types.String `tfsdk:"name"`
+	ClientID               types.String `tfsdk:"client_id"`
+	Description            types.String `tfsdk:"description"`
+	LoginRedirectURI       types.String `tfsdk:"login_redirect_uri"`
+	LoginWithEmailEnabled  types.Bool   `tfsdk:"login_with_email_enabled"`
+	AllowedCallbackUrls    types.List   `tfsdk:"allowed_callback_urls"`
+	AllowedLogoutUrls      types.List   `tfsdk:"allowed_logout_urls"`
+	AllowedWebOriginsUrls  types.List   `tfsdk:"allowed_web_origins_urls"`
+	AllowedCORSOriginsUrls types.List   `tfsdk:"allowed_cors_origins_urls"`
+	PasswordlessSMS        types.Bool   `tfsdk:"passwordless_sms"`
+	MFAEnabled             types.Bool   `tfsdk:"mfa_enabled"`
+	ShouldSendInviteEmail  types.Bool   `tfsdk:"should_send_invite_email"`
+	LogoURI                types.String `tfsdk:"logo_uri"`
+	RefreshTokenEnabled    types.Bool   `tfsdk:"refresh_token_enabled"`
+}
+
+func clientAppToApplication(ctx context.Context, app *client.Application) Application {
+	return Application{
+		ID:                     stringPointerToTfString(app.ID),
+		Name:                   stringPointerToTfString(app.Name),
+		ClientID:               stringPointerToTfString(app.ClientID),
+		Description:            stringPointerToTfString(app.Description),
+		LoginRedirectURI:       stringPointerToTfString(app.LoginRedirectURI),
+		LoginWithEmailEnabled:  boolPointerToTfBool(app.LoginWithEmailEnabled),
+		AllowedCallbackUrls:    convertStringSliceToList(ctx, app.AllowedCallbackUrls),
+		AllowedLogoutUrls:      convertStringSliceToList(ctx, app.AllowedLogoutUrls),
+		AllowedWebOriginsUrls:  convertStringSliceToList(ctx, app.AllowedWebOriginsUrls),
+		AllowedCORSOriginsUrls: convertStringSliceToList(ctx, app.AllowedCORSOriginsUrls),
+		PasswordlessSMS:        boolPointerToTfBool(app.PasswordlessSMS),
+		MFAEnabled:             boolPointerToTfBool(app.MFAEnabled),
+		ShouldSendInviteEmail:  boolPointerToTfBool(app.ShouldSendInviteEmail),
+		LogoURI:                stringPointerToTfString(app.LogoURI),
+		RefreshTokenEnabled:    boolPointerToTfBool(app.RefreshTokenEnabled),
+	}
+}
+
+func applicationToClientApp(plan Application) client.Application {
+	allowedCallbackUrls := convertListToStringSlice(plan.AllowedCallbackUrls)
+	allowedLogoutUrls := convertListToStringSlice(plan.AllowedLogoutUrls)
+	allowedWebOriginsUrls := convertListToStringSlice(plan.AllowedWebOriginsUrls)
+	allowedCORSOriginsUrls := convertListToStringSlice(plan.AllowedCORSOriginsUrls)
+	app := client.Application{
+		Name:                   tfStringToStringPointer(plan.Name),
+		Description:            tfStringToStringPointer(plan.Description),
+		LoginRedirectURI:       tfStringToStringPointer(plan.LoginRedirectURI),
+		LoginWithEmailEnabled:  tfBoolToBoolPointer(plan.LoginWithEmailEnabled),
+		AllowedCallbackUrls:    allowedCallbackUrls,
+		AllowedLogoutUrls:      allowedLogoutUrls,
+		AllowedWebOriginsUrls:  allowedWebOriginsUrls,
+		AllowedCORSOriginsUrls: allowedCORSOriginsUrls,
+		PasswordlessSMS:        tfBoolToBoolPointer(plan.PasswordlessSMS),
+		MFAEnabled:             tfBoolToBoolPointer(plan.MFAEnabled),
+		ShouldSendInviteEmail:  tfBoolToBoolPointer(plan.ShouldSendInviteEmail),
+		LogoURI:                tfStringToStringPointer(plan.LogoURI),
+		RefreshTokenEnabled:    tfBoolToBoolPointer(plan.RefreshTokenEnabled),
+	}
+	return app
+}
+
 type ApplicationResource struct {
 	client *client.Client
 }
@@ -38,54 +99,65 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"description": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "A description of the application.",
 			},
 			"login_redirect_uri": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The login redirect URI for the application.",
 			},
 			"allowed_callback_urls": schema.ListAttribute{
 				ElementType: types.StringType,
-				Optional:    true,
+				Required:    true,
 				Description: "A list of allowed callback URLs.",
 			},
 			"allowed_logout_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
+				Computed:    true,
 				Description: "A list of allowed logout URLs.",
 			},
 			"allowed_web_origins_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
+				Computed:    true,
 				Description: "A list of allowed web origins URLs.",
 			},
 			"allowed_cors_origins_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
+				Computed:    true,
 				Description: "A list of allowed CORS origins URLs.",
+				// Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"login_with_email_enabled": schema.BoolAttribute{
-				Optional:    true,
-				Description: "Whether login with email is enabled.",
+				Optional: true,
+				Computed: true,
 			},
 			"passwordless_sms": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether passwordless SMS is enabled.",
 			},
 			"mfa_enabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether MFA is enabled.",
 			},
 			"should_send_invite_email": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether an invite email should be sent.",
 			},
 			"logo_uri": schema.StringAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The logo URI for the application.",
 			},
 			"refresh_token_enabled": schema.BoolAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "Whether refresh tokens are enabled.",
 			},
 		},
@@ -110,7 +182,7 @@ func (r *ApplicationResource) Configure(_ context.Context, req resource.Configur
 }
 
 func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan client.Application
+	var plan Application
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -118,17 +190,21 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	createdApp, err := r.client.Application.CreateApplication(ctx, &plan)
+	app := applicationToClientApp(plan)
+
+	createdApp, err := r.client.Application.CreateApplication(ctx, &app)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Application", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, createdApp)
+	retApp := clientAppToApplication(ctx, createdApp)
+
+	resp.State.Set(ctx, retApp)
 }
 
 func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state client.Application
+	var state Application
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -136,35 +212,44 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	app, err := r.client.Application.GetApplication(ctx, state.ID)
+	app, err := r.client.Application.GetApplication(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Application", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, app)
+	retApp := clientAppToApplication(ctx, app)
+
+	resp.State.Set(ctx, retApp)
 }
 
 func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan client.Application
+	var plan Application
+	var state Application
 
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updatedApp, err := r.client.Application.UpdateApplication(ctx, plan.ID, &plan)
+	app := applicationToClientApp(plan)
+
+	updatedApp, err := r.client.Application.UpdateApplication(ctx, state.ID.ValueString(), &app)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Application", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, updatedApp)
+	retApp := clientAppToApplication(ctx, updatedApp)
+
+	resp.State.Set(ctx, retApp)
 }
 
 func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state client.Application
+	var state Application
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -172,7 +257,7 @@ func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 
-	err := r.client.Application.DeleteApplication(ctx, state.ID)
+	err := r.client.Application.DeleteApplication(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting Application", err.Error())
 		return

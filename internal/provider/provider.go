@@ -91,7 +91,12 @@ func (o *OystehrProvider) DataSources(ctx context.Context) []func() datasource.D
 
 func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		NewApplicationResource,
 		NewFhirResource,
+		NewM2MResource,
+		NewRoleResource,
+		NewSecretResource,
+		NewZambdaResource,
 	}
 }
 

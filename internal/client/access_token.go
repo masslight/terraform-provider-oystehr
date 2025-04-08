@@ -17,11 +17,12 @@ func getAccessToken(ctx context.Context, config ClientConfig) (string, error) {
 		return "", fmt.Errorf("client ID or client secret is not set")
 	}
 
-	url := "https://auth.zapher.com/oauth2/token"
+	url := "https://auth.zapehr.com/oauth/token"
 	data := map[string]string{
 		"grant_type":    "client_credentials",
 		"client_id":     *config.ClientID,
 		"client_secret": *config.ClientSecret,
+		"audience":      "https://api.zapehr.com",
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -33,7 +34,6 @@ func getAccessToken(ctx context.Context, config ClientConfig) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
