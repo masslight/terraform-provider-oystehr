@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,19 +12,19 @@ const (
 )
 
 type M2M struct {
-	ID           string       `json:"id"`
-	ClientID     string       `json:"clientId"`
-	Profile      string       `json:"profile"`
-	JwksURL      string       `json:"jwksUrl,omitempty"`
-	Name         string       `json:"name"`
-	Description  string       `json:"description,omitempty"`
-	AccessPolicy AccessPolicy `json:"accessPolicy,omitempty"`
-	Roles        []RoleStub   `json:"roles"`
+	ID           *string       `json:"id"`
+	ClientID     *string       `json:"clientId"`
+	Profile      *string       `json:"profile"`
+	JwksURL      *string       `json:"jwksUrl,omitempty"`
+	Name         *string       `json:"name"`
+	Description  *string       `json:"description,omitempty"`
+	AccessPolicy *AccessPolicy `json:"accessPolicy,omitempty"`
+	Roles        []RoleStub    `json:"roles"`
 }
 
 type RoleStub struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID   *string `json:"id"`
+	Name *string `json:"name"`
 }
 
 type m2mClient struct {
@@ -44,25 +43,13 @@ func (c *m2mClient) CreateM2M(ctx context.Context, m2m *M2M) (*M2M, error) {
 		return nil, fmt.Errorf("failed to marshal M2M: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	responseBody, err := request(ctx, c.config, http.MethodPost, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to create M2M: %w; %+v, %s", err, m2m, body)
 	}
 
 	var createdM2M M2M
-	if err := json.NewDecoder(resp.Body).Decode(&createdM2M); err != nil {
+	if err := json.Unmarshal(responseBody, &createdM2M); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -72,24 +59,13 @@ func (c *m2mClient) CreateM2M(ctx context.Context, m2m *M2M) (*M2M, error) {
 func (c *m2mClient) GetM2M(ctx context.Context, id string) (*M2M, error) {
 	url := fmt.Sprintf("%s/%s", m2mBaseURL, id)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	responseBody, err := request(ctx, c.config, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to get M2M: %w", err)
 	}
 
 	var m2m M2M
-	if err := json.NewDecoder(resp.Body).Decode(&m2m); err != nil {
+	if err := json.Unmarshal(responseBody, &m2m); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -98,31 +74,18 @@ func (c *m2mClient) GetM2M(ctx context.Context, id string) (*M2M, error) {
 
 func (c *m2mClient) UpdateM2M(ctx context.Context, id string, m2m *M2M) (*M2M, error) {
 	url := fmt.Sprintf("%s/%s", m2mBaseURL, id)
-
 	body, err := json.Marshal(m2m)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal M2M: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewBuffer(body))
+	responseBody, err := request(ctx, c.config, http.MethodPatch, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to update M2M: %w", err)
 	}
 
 	var updatedM2M M2M
-	if err := json.NewDecoder(resp.Body).Decode(&updatedM2M); err != nil {
+	if err := json.Unmarshal(responseBody, &updatedM2M); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -132,20 +95,9 @@ func (c *m2mClient) UpdateM2M(ctx context.Context, id string, m2m *M2M) (*M2M, e
 func (c *m2mClient) DeleteM2M(ctx context.Context, id string) error {
 	url := fmt.Sprintf("%s/%s", m2mBaseURL, id)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	_, err := request(ctx, c.config, http.MethodDelete, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("failed to delete M2M: %w", err)
 	}
 
 	return nil

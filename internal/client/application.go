@@ -49,7 +49,7 @@ func (c *applicationClient) CreateApplication(ctx context.Context, app *Applicat
 	responseBody, err := request(ctx, c.config, http.MethodPost, url, body)
 	if err != nil {
 		// return nil, fmt.Errorf("failed to create application: %w", err)
-		return nil, fmt.Errorf("failed to create application: %w; %+v, %s", err, app, body)
+		return nil, fmt.Errorf("failed to create application: %w")
 	}
 
 	var createdApp Application

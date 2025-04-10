@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,21 +16,21 @@ const (
 )
 
 type Rule struct {
-	Resource  []string       `json:"resource"`
-	Action    []string       `json:"action"`
-	Effect    Effect         `json:"effect"`
-	Condition map[string]any `json:"condition,omitempty"`
+	Resource  []string       `json:"resource" tfsdk:"resource"`
+	Action    []string       `json:"action" tfsdk:"action"`
+	Effect    *Effect        `json:"effect" tfsdk:"effect"`
+	Condition map[string]any `json:"condition,omitempty" tfsdk:"condition"`
 }
 
 type AccessPolicy struct {
-	Rule []Rule `json:"rule"`
+	Rule []Rule `json:"rule" tfsdk:"rule"`
 }
 
 type Role struct {
-	ID           string       `json:"id"`
-	Name         string       `json:"name"`
-	Description  string       `json:"description,omitempty"`
-	AccessPolicy AccessPolicy `json:"accessPolicy"`
+	ID           *string       `json:"id"`
+	Name         *string       `json:"name"`
+	Description  *string       `json:"description,omitempty"`
+	AccessPolicy *AccessPolicy `json:"accessPolicy"`
 }
 
 type roleClient struct {
@@ -44,31 +43,18 @@ func newRoleClient(config ClientConfig) *roleClient {
 
 func (c *roleClient) CreateRole(ctx context.Context, role *Role) (*Role, error) {
 	url := roleBaseURL
-
 	body, err := json.Marshal(role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal role: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	responseBody, err := request(ctx, c.config, http.MethodPost, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to create role: %w", err)
 	}
 
 	var createdRole Role
-	if err := json.NewDecoder(resp.Body).Decode(&createdRole); err != nil {
+	if err := json.Unmarshal(responseBody, &createdRole); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -78,24 +64,13 @@ func (c *roleClient) CreateRole(ctx context.Context, role *Role) (*Role, error) 
 func (c *roleClient) GetRole(ctx context.Context, id string) (*Role, error) {
 	url := fmt.Sprintf("%s/%s", roleBaseURL, id)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	responseBody, err := request(ctx, c.config, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to get role: %w", err)
 	}
 
 	var role Role
-	if err := json.NewDecoder(resp.Body).Decode(&role); err != nil {
+	if err := json.Unmarshal(responseBody, &role); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -104,31 +79,18 @@ func (c *roleClient) GetRole(ctx context.Context, id string) (*Role, error) {
 
 func (c *roleClient) UpdateRole(ctx context.Context, id string, role *Role) (*Role, error) {
 	url := fmt.Sprintf("%s/%s", roleBaseURL, id)
-
 	body, err := json.Marshal(role)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal role: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewBuffer(body))
+	responseBody, err := request(ctx, c.config, http.MethodPatch, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to update role: %w", err)
 	}
 
 	var updatedRole Role
-	if err := json.NewDecoder(resp.Body).Decode(&updatedRole); err != nil {
+	if err := json.Unmarshal(responseBody, &updatedRole); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -138,20 +100,9 @@ func (c *roleClient) UpdateRole(ctx context.Context, id string, role *Role) (*Ro
 func (c *roleClient) DeleteRole(ctx context.Context, id string) error {
 	url := fmt.Sprintf("%s/%s", roleBaseURL, id)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	_, err := request(ctx, c.config, http.MethodDelete, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("failed to delete role: %w", err)
 	}
 
 	return nil

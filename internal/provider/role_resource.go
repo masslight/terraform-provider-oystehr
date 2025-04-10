@@ -9,6 +9,31 @@ import (
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
+type Role struct {
+	ID           types.String `tfsdk:"id"`
+	Name         types.String `tfsdk:"name"`
+	Description  types.String `tfsdk:"description"`
+	AccessPolicy types.Object `tfsdk:"access_policy"`
+}
+
+func convertRoleToClientRole(ctx context.Context, role Role) client.Role {
+	return client.Role{
+		ID:           tfStringToStringPointer(role.ID),
+		Name:         tfStringToStringPointer(role.Name),
+		Description:  tfStringToStringPointer(role.Description),
+		AccessPolicy: convertAccessPolicyToClientAccessPolicy(ctx, role.AccessPolicy),
+	}
+}
+
+func convertClientRoleToRole(ctx context.Context, clientRole *client.Role) Role {
+	return Role{
+		ID:           stringPointerToTfString(clientRole.ID),
+		Name:         stringPointerToTfString(clientRole.Name),
+		Description:  stringPointerToTfString(clientRole.Description),
+		AccessPolicy: convertClientAccessPolicyToAccessPolicy(ctx, clientRole.AccessPolicy),
+	}
+}
+
 type RoleResource struct {
 	client *client.Client
 }
@@ -37,37 +62,9 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "A description of the role.",
 			},
 			"access_policy": schema.SingleNestedAttribute{
-				Optional:    true,
+				Required:    true,
 				Description: "The access policy associated with the role.",
-				Attributes: map[string]schema.Attribute{
-					"rule": schema.ListNestedAttribute{
-						Optional:    true,
-						Description: "A list of rules in the access policy.",
-						NestedObject: schema.NestedAttributeObject{
-							Attributes: map[string]schema.Attribute{
-								"resource": schema.ListAttribute{
-									ElementType: types.StringType,
-									Required:    true,
-									Description: "The resources the rule applies to.",
-								},
-								"action": schema.ListAttribute{
-									ElementType: types.StringType,
-									Required:    true,
-									Description: "The actions the rule allows or denies.",
-								},
-								"effect": schema.StringAttribute{
-									Required:    true,
-									Description: "The effect of the rule (Allow or Deny).",
-								},
-								"condition": schema.MapAttribute{
-									ElementType: types.StringType,
-									Optional:    true,
-									Description: "Conditions for the rule.",
-								},
-							},
-						},
-					},
-				},
+				Attributes:  accessPolicyAttributes,
 			},
 		},
 	}
@@ -91,7 +88,7 @@ func (r *RoleResource) Configure(_ context.Context, req resource.ConfigureReques
 }
 
 func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan client.Role
+	var plan Role
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -99,17 +96,21 @@ func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	createdRole, err := r.client.Role.CreateRole(ctx, &plan)
+	role := convertRoleToClientRole(ctx, plan)
+
+	createdRole, err := r.client.Role.CreateRole(ctx, &role)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Role", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, createdRole)
+	retRole := convertClientRoleToRole(ctx, createdRole)
+
+	resp.State.Set(ctx, retRole)
 }
 
 func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state client.Role
+	var state Role
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -117,35 +118,44 @@ func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	role, err := r.client.Role.GetRole(ctx, state.ID)
+	role, err := r.client.Role.GetRole(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Role", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, role)
+	retRole := convertClientRoleToRole(ctx, role)
+
+	resp.State.Set(ctx, retRole)
 }
 
 func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan client.Role
+	var plan Role
+	var state Role
 
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updatedRole, err := r.client.Role.UpdateRole(ctx, plan.ID, &plan)
+	role := convertRoleToClientRole(ctx, plan)
+
+	updatedRole, err := r.client.Role.UpdateRole(ctx, state.ID.ValueString(), &role)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Role", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, updatedRole)
+	retRole := convertClientRoleToRole(ctx, updatedRole)
+
+	resp.State.Set(ctx, retRole)
 }
 
 func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state client.Role
+	var state Role
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -153,7 +163,7 @@ func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	err := r.client.Role.DeleteRole(ctx, state.ID)
+	err := r.client.Role.DeleteRole(ctx, state.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting Role", err.Error())
 		return
