@@ -3,8 +3,11 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -99,66 +102,73 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 			"description": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "A description of the application.",
 			},
 			"login_redirect_uri": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The login redirect URI for the application.",
 			},
 			"allowed_callback_urls": schema.ListAttribute{
 				ElementType: types.StringType,
-				Required:    true,
+				Optional:    true,
+				Computed:    true,
 				Description: "A list of allowed callback URLs.",
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"allowed_logout_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
 				Computed:    true,
 				Description: "A list of allowed logout URLs.",
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"allowed_web_origins_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
 				Computed:    true,
 				Description: "A list of allowed web origins URLs.",
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"allowed_cors_origins_urls": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
 				Computed:    true,
 				Description: "A list of allowed CORS origins URLs.",
-				// Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"login_with_email_enabled": schema.BoolAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether login with email is enabled.",
+				Default:     booldefault.StaticBool(true),
 			},
 			"passwordless_sms": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether passwordless SMS is enabled.",
+				Default:     booldefault.StaticBool(false),
 			},
 			"mfa_enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether MFA is enabled.",
+				Default:     booldefault.StaticBool(false),
 			},
 			"should_send_invite_email": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether an invite email should be sent.",
+				Default:     booldefault.StaticBool(false),
 			},
 			"logo_uri": schema.StringAttribute{
 				Optional:    true,
-				Computed:    true,
 				Description: "The logo URI for the application.",
 			},
 			"refresh_token_enabled": schema.BoolAttribute{
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether refresh tokens are enabled.",
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}

@@ -12,16 +12,16 @@ const (
 )
 
 type Application struct {
-	ID                     *string  `json:"id"`
+	ID                     *string  `json:"id,omitempty"`
 	Name                   *string  `json:"name"`
-	ClientID               *string  `json:"clientId"`
+	ClientID               *string  `json:"clientId,omitempty"`
 	Description            *string  `json:"description,omitempty"`
 	LoginRedirectURI       *string  `json:"loginRedirectUri,omitempty"`
 	LoginWithEmailEnabled  *bool    `json:"loginWithEmailEnabled,omitempty"`
-	AllowedCallbackUrls    []string `json:"allowedCallbackUrls,omitempty"`
-	AllowedLogoutUrls      []string `json:"allowedLogoutUrls,omitempty"`
-	AllowedWebOriginsUrls  []string `json:"allowedWebOriginsUrls,omitempty"`
-	AllowedCORSOriginsUrls []string `json:"allowedCORSOriginsUrls,omitempty"`
+	AllowedCallbackUrls    []string `json:"allowedCallbackUrls"`
+	AllowedLogoutUrls      []string `json:"allowedLogoutUrls"`
+	AllowedWebOriginsUrls  []string `json:"allowedWebOriginsUrls"`
+	AllowedCORSOriginsUrls []string `json:"allowedCORSOriginsUrls"`
 	PasswordlessSMS        *bool    `json:"passwordlessSMS,omitempty"`
 	MFAEnabled             *bool    `json:"mfaEnabled,omitempty"`
 	ShouldSendInviteEmail  *bool    `json:"shouldSendInviteEmail,omitempty"`
