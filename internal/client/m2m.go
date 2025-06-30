@@ -11,7 +11,20 @@ const (
 	m2mBaseURL = "https://iam-api.zapehr.com/v1/m2m"
 )
 
+// M2M corresponds to create and update input, and matches the output format for terraform.
 type M2M struct {
+	ID           *string       `json:"id"`
+	ClientID     *string       `json:"clientId"`
+	Profile      *string       `json:"profile"`
+	JwksURL      *string       `json:"jwksUrl,omitempty"`
+	Name         *string       `json:"name"`
+	Description  *string       `json:"description,omitempty"`
+	AccessPolicy *AccessPolicy `json:"accessPolicy,omitempty"`
+	Roles        []string      `json:"roles"`
+}
+
+// M2MOutput matches the output format of the API response. It's role field is more complex and less useful than the M2M input type.
+type M2MOutput struct {
 	ID           *string       `json:"id"`
 	ClientID     *string       `json:"clientId"`
 	Profile      *string       `json:"profile"`
@@ -25,6 +38,30 @@ type M2M struct {
 type RoleStub struct {
 	ID   *string `json:"id"`
 	Name *string `json:"name"`
+}
+
+func m2mOutputToM2M(m2mOutput *M2MOutput) *M2M {
+	if m2mOutput == nil {
+		return nil
+	}
+
+	roles := make([]string, len(m2mOutput.Roles))
+	for i, role := range m2mOutput.Roles {
+		if role.ID != nil {
+			roles[i] = *role.ID
+		}
+	}
+
+	return &M2M{
+		ID:           m2mOutput.ID,
+		ClientID:     m2mOutput.ClientID,
+		Profile:      m2mOutput.Profile,
+		JwksURL:      m2mOutput.JwksURL,
+		Name:         m2mOutput.Name,
+		Description:  m2mOutput.Description,
+		AccessPolicy: m2mOutput.AccessPolicy,
+		Roles:        roles,
+	}
 }
 
 type m2mClient struct {
@@ -48,12 +85,12 @@ func (c *m2mClient) CreateM2M(ctx context.Context, m2m *M2M) (*M2M, error) {
 		return nil, fmt.Errorf("failed to create M2M: %w; %+v, %s", err, m2m, body)
 	}
 
-	var createdM2M M2M
-	if err := json.Unmarshal(responseBody, &createdM2M); err != nil {
+	var createdM2MOutput M2MOutput
+	if err := json.Unmarshal(responseBody, &createdM2MOutput); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &createdM2M, nil
+	return m2mOutputToM2M(&createdM2MOutput), nil
 }
 
 func (c *m2mClient) GetM2M(ctx context.Context, id string) (*M2M, error) {
@@ -64,12 +101,12 @@ func (c *m2mClient) GetM2M(ctx context.Context, id string) (*M2M, error) {
 		return nil, fmt.Errorf("failed to get M2M: %w", err)
 	}
 
-	var m2m M2M
-	if err := json.Unmarshal(responseBody, &m2m); err != nil {
+	var m2mOutput M2MOutput
+	if err := json.Unmarshal(responseBody, &m2mOutput); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &m2m, nil
+	return m2mOutputToM2M(&m2mOutput), nil
 }
 
 func (c *m2mClient) UpdateM2M(ctx context.Context, id string, m2m *M2M) (*M2M, error) {
@@ -84,12 +121,12 @@ func (c *m2mClient) UpdateM2M(ctx context.Context, id string, m2m *M2M) (*M2M, e
 		return nil, fmt.Errorf("failed to update M2M: %w", err)
 	}
 
-	var updatedM2M M2M
-	if err := json.Unmarshal(responseBody, &updatedM2M); err != nil {
+	var updatedM2MOutput M2MOutput
+	if err := json.Unmarshal(responseBody, &updatedM2MOutput); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &updatedM2M, nil
+	return m2mOutputToM2M(&updatedM2MOutput), nil
 }
 
 func (c *m2mClient) DeleteM2M(ctx context.Context, id string) error {

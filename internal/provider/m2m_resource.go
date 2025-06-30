@@ -3,8 +3,11 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -28,7 +31,7 @@ func convertM2MToClientM2M(ctx context.Context, m2m M2M) client.M2M {
 		Name:         tfStringToStringPointer(m2m.Name),
 		Description:  tfStringToStringPointer(m2m.Description),
 		AccessPolicy: convertAccessPolicyToClientAccessPolicy(ctx, m2m.AccessPolicy),
-		Roles:        convertListToRoleStubSlice(m2m.Roles),
+		Roles:        convertListToStringSlice(m2m.Roles),
 		JwksURL:      tfStringToStringPointer(m2m.JwksURL),
 	}
 }
@@ -41,7 +44,7 @@ func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M) M2M {
 		Name:         stringPointerToTfString(clientM2M.Name),
 		Description:  stringPointerToTfString(clientM2M.Description),
 		AccessPolicy: convertClientAccessPolicyToAccessPolicy(ctx, clientM2M.AccessPolicy),
-		Roles:        convertRoleStubSliceToList(ctx, clientM2M.Roles),
+		Roles:        convertStringSliceToList(ctx, clientM2M.Roles),
 		JwksURL:      stringPointerToTfString(clientM2M.JwksURL),
 	}
 }
@@ -79,16 +82,24 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			},
 			"access_policy": schema.SingleNestedAttribute{
 				Optional:    true,
+				Computed:    true,
 				Description: "The access policy associated with the M2M resource.",
 				Attributes:  accessPolicyAttributes,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(accessPolicyAttributesType, map[string]attr.Value{
+						"rule": types.ListValueMust(
+							ruleType,
+							[]attr.Value{},
+						),
+					}),
+				),
 			},
-			"roles": schema.ListNestedAttribute{
-				Description: "A list of roles associated with the M2M resource.",
+			"roles": schema.ListAttribute{
+				ElementType: types.StringType,
 				Optional:    true,
 				Computed:    true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: roleStubAttributes,
-				},
+				Description: "A list of roles associated with the M2M resource.",
+				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"profile": schema.StringAttribute{
 				Computed:    true,
