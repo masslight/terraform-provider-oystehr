@@ -5,8 +5,28 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
+
+type Secret struct {
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
+}
+
+func convertSecretToClientSecret(ctx context.Context, secret Secret) client.Secret {
+	return client.Secret{
+		Name:  tfStringToStringPointer(secret.Name),
+		Value: tfStringToStringPointer(secret.Value),
+	}
+}
+
+func convertClientSecretToSecret(ctx context.Context, clientSecret *client.Secret) Secret {
+	return Secret{
+		Name:  stringPointerToTfString(clientSecret.Name),
+		Value: stringPointerToTfString(clientSecret.Value),
+	}
+}
 
 type SecretResource struct {
 	client *client.Client
@@ -54,7 +74,7 @@ func (r *SecretResource) Configure(_ context.Context, req resource.ConfigureRequ
 }
 
 func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan client.Secret
+	var plan Secret
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -62,17 +82,19 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	createdSecret, err := r.client.Secret.SetSecret(ctx, &plan)
+	secret := convertSecretToClientSecret(ctx, plan)
+
+	createdSecret, err := r.client.Secret.SetSecret(ctx, &secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Creating Secret", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, createdSecret)
+	resp.State.Set(ctx, convertClientSecretToSecret(ctx, createdSecret))
 }
 
 func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state client.Secret
+	var state Secret
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -80,17 +102,17 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	secret, err := r.client.Secret.GetSecret(ctx, state.Name)
+	secret, err := r.client.Secret.GetSecret(ctx, state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Secret", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, secret)
+	resp.State.Set(ctx, convertClientSecretToSecret(ctx, secret))
 }
 
 func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan client.Secret
+	var plan Secret
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
@@ -98,17 +120,19 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	updatedSecret, err := r.client.Secret.SetSecret(ctx, &plan)
+	secret := convertSecretToClientSecret(ctx, plan)
+
+	updatedSecret, err := r.client.Secret.SetSecret(ctx, &secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Secret", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, updatedSecret)
+	resp.State.Set(ctx, convertClientSecretToSecret(ctx, updatedSecret))
 }
 
 func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state client.Secret
+	var state Secret
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -116,7 +140,7 @@ func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	err := r.client.Secret.DeleteSecret(ctx, state.Name)
+	err := r.client.Secret.DeleteSecret(ctx, state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting Secret", err.Error())
 		return
