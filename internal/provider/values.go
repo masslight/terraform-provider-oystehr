@@ -77,6 +77,22 @@ func tfBoolToBoolPointer(value types.Bool) *bool {
 	return &val
 }
 
+func tfInt32ToInt32Pointer(value types.Int32) *int32 {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+	val := value.ValueInt32()
+	return &val
+}
+
+func tfInt64ToInt64Pointer(value types.Int64) *int64 {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+	val := value.ValueInt64()
+	return &val
+}
+
 func stringPointerToTfString(value *string) types.String {
 	if value == nil {
 		return types.StringNull()
@@ -89,6 +105,20 @@ func boolPointerToTfBool(value *bool) types.Bool {
 		return types.BoolNull()
 	}
 	return types.BoolValue(*value)
+}
+
+func int32PointerToTfInt32(value *int32) types.Int32 {
+	if value == nil {
+		return types.Int32Null()
+	}
+	return types.Int32Value(*value)
+}
+
+func int64PointerToTfInt64(value *int64) types.Int64 {
+	if value == nil {
+		return types.Int64Null()
+	}
+	return types.Int64Value(*value)
 }
 
 func convertClientAccessPolicyToAccessPolicy(ctx context.Context, accessPolicy *client.AccessPolicy) types.Object {
