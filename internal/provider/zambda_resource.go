@@ -320,8 +320,11 @@ func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan Zambda
+	var state Zambda
 
 	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -329,7 +332,7 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	zambda := convertZambdaToClientZambda(ctx, plan)
 
-	updatedZambda, err := r.client.Zambda.UpdateZambda(ctx, plan.ID.ValueString(), &zambda)
+	updatedZambda, err := r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &zambda)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Zambda", err.Error())
 		return
