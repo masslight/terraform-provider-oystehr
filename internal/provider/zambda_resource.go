@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -22,7 +23,7 @@ type Schedule struct {
 	Expression  types.String `tfsdk:"expression"` // Cron expression
 	Start       types.String `tfsdk:"start"`      // Optional start time
 	End         types.String `tfsdk:"end"`        // Optional end time
-	RetryPolicy RetryPolicy  `tfsdk:"retry_policy"`
+	RetryPolicy *RetryPolicy `tfsdk:"retry_policy"`
 }
 
 type FileInfo struct {
@@ -47,27 +48,36 @@ type Zambda struct {
 }
 
 func convertZambdaToClientZambda(ctx context.Context, zambda Zambda) client.ZambdaFunction {
-	var fi *client.FileInfo
 	var schedule *client.ZambdaSchedule
-	zambda.FileInfo.As(ctx, &fi, basetypes.ObjectAsOptions{
-		UnhandledNullAsEmpty:    true,
-		UnhandledUnknownAsEmpty: true,
-	})
-	zambda.Schedule.As(ctx, &schedule, basetypes.ObjectAsOptions{
-		UnhandledNullAsEmpty:    true,
-		UnhandledUnknownAsEmpty: true,
-	})
+	if !zambda.Schedule.IsNull() && !zambda.Schedule.IsUnknown() {
+		var tfSchedule Schedule
+		zambda.Schedule.As(ctx, &tfSchedule, basetypes.ObjectAsOptions{
+			UnhandledNullAsEmpty:    true,
+			UnhandledUnknownAsEmpty: true,
+		})
+		var retryPolicy *client.RetryPolicy
+		if tfSchedule.RetryPolicy != nil {
+			retryPolicy = &client.RetryPolicy{
+				MaximumEventAge: tfInt64ToInt64Pointer(tfSchedule.RetryPolicy.MaximumEventAge),
+				MaximumRetry:    tfInt64ToInt64Pointer(tfSchedule.RetryPolicy.MaximumRetry),
+			}
+		}
+		schedule = &client.ZambdaSchedule{
+			Expression:  tfStringToStringPointer(tfSchedule.Expression),
+			Start:       tfStringToStringPointer(tfSchedule.Start),
+			End:         tfStringToStringPointer(tfSchedule.End),
+			RetryPolicy: retryPolicy,
+		}
+	}
 	return client.ZambdaFunction{
-		ID:      tfStringToStringPointer(zambda.ID),
-		Name:    tfStringToStringPointer(zambda.Name),
-		Runtime: (*client.Runtime)(zambda.Runtime.ValueStringPointer()),
-		// Runtime:          (*client.Runtime)(tfStringToStringPointer(zambda.Runtime)),
+		ID:               tfStringToStringPointer(zambda.ID),
+		Name:             tfStringToStringPointer(zambda.Name),
+		Runtime:          (*client.Runtime)(zambda.Runtime.ValueStringPointer()),
 		MemorySize:       tfInt32ToInt32Pointer(zambda.MemorySize),
 		TimeoutInSeconds: tfInt32ToInt32Pointer(zambda.Timeout),
 		Status:           tfStringToStringPointer(zambda.Status),
 		TriggerMethod:    (*client.TriggerMethod)(zambda.TriggerMethod.ValueStringPointer()),
 		Schedule:         schedule,
-		FileInfo:         fi,
 	}
 }
 
@@ -82,15 +92,16 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 			},
 		)
 	} else {
+		tfFileInfo := FileInfo{
+			Name:         stringPointerToTfString(clientZambda.FileInfo.Name),
+			Size:         int64PointerToTfInt64(clientZambda.FileInfo.Size),
+			LastModified: stringPointerToTfString(clientZambda.FileInfo.LastModified),
+		}
 		fi, _ = types.ObjectValueFrom(ctx, map[string]attr.Type{
 			"name":          types.StringType,
 			"size":          types.Int64Type,
 			"last_modified": types.StringType,
-		}, map[string]attr.Value{
-			"name":          stringPointerToTfString(clientZambda.FileInfo.Name),
-			"size":          int64PointerToTfInt64(clientZambda.FileInfo.Size),
-			"last_modified": stringPointerToTfString(clientZambda.FileInfo.LastModified),
-		})
+		}, tfFileInfo)
 	}
 	var schedule types.Object
 	if clientZambda.Schedule == nil {
@@ -108,15 +119,18 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 			},
 		)
 	} else {
-		var scheduleRetryPolicy types.Object
+		var tfRetryPolicy *RetryPolicy
 		if clientZambda.Schedule.RetryPolicy != nil {
-			scheduleRetryPolicy, _ = types.ObjectValueFrom(ctx, map[string]attr.Type{
-				"maximum_event_age": types.Int64Type,
-				"maximum_retry":     types.Int64Type,
-			}, map[string]attr.Value{
-				"maximum_event_age": int64PointerToTfInt64(clientZambda.Schedule.RetryPolicy.MaximumEventAge),
-				"maximum_retry":     int64PointerToTfInt64(clientZambda.Schedule.RetryPolicy.MaximumRetry),
-			})
+			tfRetryPolicy = &RetryPolicy{
+				MaximumEventAge: int64PointerToTfInt64(clientZambda.Schedule.RetryPolicy.MaximumEventAge),
+				MaximumRetry:    int64PointerToTfInt64(clientZambda.Schedule.RetryPolicy.MaximumRetry),
+			}
+		}
+		tfSchedule := Schedule{
+			Expression:  stringPointerToTfString(clientZambda.Schedule.Expression),
+			Start:       stringPointerToTfString(clientZambda.Schedule.Start),
+			End:         stringPointerToTfString(clientZambda.Schedule.End),
+			RetryPolicy: tfRetryPolicy,
 		}
 		schedule, _ = types.ObjectValueFrom(ctx, map[string]attr.Type{
 			"expression": types.StringType,
@@ -128,18 +142,12 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 					"maximum_retry":     types.Int64Type,
 				},
 			},
-		}, map[string]attr.Value{
-			"expression":   stringPointerToTfString(clientZambda.Schedule.Expression),
-			"start":        stringPointerToTfString(clientZambda.Schedule.Start),
-			"end":          stringPointerToTfString(clientZambda.Schedule.End),
-			"retry_policy": scheduleRetryPolicy,
-		})
+		}, tfSchedule)
 	}
-	return Zambda{
-		ID:      stringPointerToTfString(clientZambda.ID),
-		Name:    stringPointerToTfString(clientZambda.Name),
-		Runtime: RuntimeValue{basetypes.NewStringValue(string(*clientZambda.Runtime))},
-		// Runtime:       basetypes.StringValue{},
+	zambda := Zambda{
+		ID:            stringPointerToTfString(clientZambda.ID),
+		Name:          stringPointerToTfString(clientZambda.Name),
+		Runtime:       RuntimeValue{basetypes.NewStringValue(string(*clientZambda.Runtime))},
 		MemorySize:    int32PointerToTfInt32(clientZambda.MemorySize),
 		Timeout:       int32PointerToTfInt32(clientZambda.TimeoutInSeconds),
 		Status:        stringPointerToTfString(clientZambda.Status),
@@ -147,6 +155,7 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 		Schedule:      schedule,
 		FileInfo:      fi,
 	}
+	return zambda
 }
 
 type ZambdaResource struct {
@@ -219,6 +228,7 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					},
 					"retry_policy": schema.SingleNestedAttribute{
 						Optional:    true,
+						Computed:    true,
 						Description: "The retry policy for the schedule.",
 						Attributes: map[string]schema.Attribute{
 							"maximum_event_age": schema.Int64Attribute{
@@ -230,6 +240,17 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 								Description: "The maximum number of retries.",
 							},
 						},
+						Default: objectdefault.StaticValue(
+							types.ObjectValueMust(
+								map[string]attr.Type{
+									"maximum_event_age": types.Int64Type,
+									"maximum_retry":     types.Int64Type,
+								},
+								map[string]attr.Value{
+									"maximum_event_age": types.Int64Value(90),
+									"maximum_retry":     types.Int64Value(0),
+								}),
+						),
 					},
 				},
 			},
