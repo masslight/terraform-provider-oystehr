@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -11,25 +13,42 @@ import (
 )
 
 type FhirResourceData struct {
-	ID   types.String  `tfsdk:"id"`
-	Type types.String  `tfsdk:"type"`
-	Data types.Dynamic `tfsdk:"data"`
+	ID   types.String `tfsdk:"id"`
+	Type types.String `tfsdk:"type"`
+	Data types.String `tfsdk:"data"`
+	Meta types.Object `tfsdk:"meta"`
 }
 
 func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirResourceData) (map[string]any, diag.Diagnostics) {
-	data, diags := convertDynamicValueToMap(ctx, resourceData.Data)
-	if diags.HasError() {
-		return nil, diags
+	var data map[string]any
+	err := json.Unmarshal([]byte(resourceData.Data.ValueString()), &data)
+	if err != nil {
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Failed to unmarshal FHIR resource data",
+			"Expected a valid JSON string for the FHIR resource data.",
+		)}
 	}
-	return map[string]any{
-		"id":           resourceData.ID.ValueString(),
-		"resourceType": resourceData.Type.ValueString(),
-		"data":         data,
-	}, nil
+	if data == nil {
+		data = make(map[string]any)
+	}
+	if resourceData.ID.IsNull() || resourceData.ID.IsUnknown() {
+		delete(data, "id")
+	} else {
+		data["id"] = resourceData.ID.ValueString()
+	}
+	data["resourceType"] = resourceData.Type.ValueString()
+	return data, nil
 }
 
 func convertRawResourceToFhirResource(ctx context.Context, rawResource map[string]any) (FhirResourceData, diag.Diagnostics) {
-	id := rawResource["id"].(string)
+	id, ok := rawResource["id"].(string)
+	if !ok {
+		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"ID field is missing or not a string",
+			"Expected a string for the ID field.",
+		)}
+	}
+	delete(rawResource, "id")
 	resourceType, ok := rawResource["resourceType"].(string)
 	if !ok {
 		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
@@ -37,16 +56,37 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 			"Expected a string for the resourceType field.",
 		)}
 	}
-	delete(rawResource, "id")
 	delete(rawResource, "resourceType")
-	data, diags := convertMapToDynamicValue(ctx, rawResource)
+	rawMeta, ok := rawResource["meta"].(map[string]any)
+	if !ok {
+		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"meta field is missing or not a map",
+			"Expected a map for the meta field.",
+		)}
+	}
+	delete(rawResource, "meta")
+	data, err := json.Marshal(rawResource)
+	if err != nil {
+		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Failed to marshal FHIR resource data",
+			"Expected a valid JSON object for the FHIR resource data.",
+		)}
+	}
+	meta, diags := types.ObjectValue(map[string]attr.Type{
+		"last_updated": types.StringType,
+		"version_id":   types.StringType,
+	}, map[string]attr.Value{
+		"last_updated": types.StringValue(rawMeta["lastUpdated"].(string)),
+		"version_id":   types.StringValue(rawMeta["versionId"].(string)),
+	})
 	if diags.HasError() {
 		return FhirResourceData{}, diags
 	}
 	return FhirResourceData{
 		ID:   types.StringValue(id),
 		Type: types.StringValue(resourceType),
-		Data: data,
+		Data: types.StringValue(string(data)),
+		Meta: meta,
 	}, nil
 }
 
@@ -73,9 +113,23 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Required:    true,
 				Description: "The FHIR resource type (e.g., Patient, Observation).",
 			},
-			"data": schema.DynamicAttribute{
+			"data": schema.StringAttribute{
 				Required:    true,
-				Description: "The FHIR resource data.",
+				Description: "The FHIR resource data in JSON format.",
+			},
+			"meta": schema.SingleNestedAttribute{
+				Computed:    true,
+				Description: "Metadata about the FHIR resource.",
+				Attributes: map[string]schema.Attribute{
+					"last_updated": schema.StringAttribute{
+						Computed:    true,
+						Description: "The last updated timestamp of the FHIR resource.",
+					},
+					"version_id": schema.StringAttribute{
+						Computed:    true,
+						Description: "The version ID of the FHIR resource.",
+					},
+				},
 			},
 		},
 	}
@@ -125,7 +179,11 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	resp.State.Set(ctx, resource)
+	diags = resp.State.Set(ctx, resource)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 }
 
 func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
