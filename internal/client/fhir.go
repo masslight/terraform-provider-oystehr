@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,40 +15,24 @@ func newFhirClient(config ClientConfig) *fhirClient {
 	return &fhirClient{config}
 }
 
-func (c *fhirClient) CreateResource(ctx context.Context, resourceType string, data map[string]interface{}) (map[string]interface{}, error) {
+func (c *fhirClient) CreateResource(ctx context.Context, resourceType string, data map[string]any) (map[string]interface{}, error) {
 	url := fmt.Sprintf("https://fhir-api.zapehr.com/%s", resourceType)
 
+	if data["resourceType"] == nil {
+		data["resourceType"] = resourceType
+	}
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	responseBody, err := request(ctx, c.config, http.MethodPost, url, jsonData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	accessToken, err := getAccessToken(ctx, c.config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get access token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("received non-2xx response: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -59,37 +42,24 @@ func (c *fhirClient) CreateResource(ctx context.Context, resourceType string, da
 func (c *fhirClient) UpdateResource(ctx context.Context, resourceType, resourceID string, data map[string]interface{}) (map[string]interface{}, error) {
 	url := fmt.Sprintf("https://fhir-api.zapehr.com/%s/%s", resourceType, resourceID)
 
+	if data["resourceType"] == nil {
+		data["resourceType"] = resourceType
+	}
+	if data["id"] == nil {
+		data["id"] = resourceID
+	}
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(jsonData))
+	responseBody, err := request(ctx, c.config, http.MethodPut, url, jsonData)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	accessToken, err := getAccessToken(ctx, c.config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get access token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("received non-2xx response: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to update resource: %w", err)
 	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -99,30 +69,13 @@ func (c *fhirClient) UpdateResource(ctx context.Context, resourceType, resourceI
 func (c *fhirClient) GetResource(ctx context.Context, resourceType, resourceID string) (map[string]interface{}, error) {
 	url := fmt.Sprintf("https://fhir-api.zapehr.com/%s/%s", resourceType, resourceID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	responseBody, err := request(ctx, c.config, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	accessToken, err := getAccessToken(ctx, c.config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get access token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("received non-2xx response: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to get resource: %w", err)
 	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -132,26 +85,9 @@ func (c *fhirClient) GetResource(ctx context.Context, resourceType, resourceID s
 func (c *fhirClient) DeleteResource(ctx context.Context, resourceType, resourceID string) error {
 	url := fmt.Sprintf("https://fhir-api.zapehr.com/%s/%s", resourceType, resourceID)
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	_, err := request(ctx, c.config, http.MethodDelete, url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	accessToken, err := getAccessToken(ctx, c.config)
-	if err != nil {
-		return fmt.Errorf("failed to get access token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("received non-2xx response: %d", resp.StatusCode)
+		return fmt.Errorf("failed to delete resource: %w", err)
 	}
 
 	return nil

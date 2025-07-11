@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
@@ -139,4 +141,145 @@ func convertAccessPolicyToClientAccessPolicy(ctx context.Context, accessPolicy t
 		clientAccessPolicy.Rule = make([]client.Rule, 0)
 	}
 	return &clientAccessPolicy
+}
+
+func convertGoValueToTfValue(ctx context.Context, v any) (attr.Value, diag.Diagnostics) {
+	switch vv := v.(type) {
+	case string:
+		return types.StringValue(vv), nil
+	case bool:
+		return types.BoolValue(vv), nil
+	case int, int32, int64:
+		return types.Int64Value(int64(vv.(int))), nil
+	case float32, float64:
+		return types.Float64Value(float64(vv.(float32))), nil
+	case map[string]any:
+		nestedValue, diags := convertGoMapToTfObject(ctx, vv)
+		if diags.HasError() {
+			return nil, diags
+		}
+		return nestedValue, nil
+	case []any:
+		elements := make([]attr.Value, len(vv))
+		for i, elem := range vv {
+			if elemMap, ok := elem.(map[string]any); ok {
+				convertedElem, diags := convertGoMapToTfObject(ctx, elemMap)
+				if diags.HasError() {
+					return nil, diags
+				}
+				elements[i] = convertedElem
+			} else {
+				convertedElem, diags := convertGoValueToTfValue(ctx, elem)
+				if diags.HasError() {
+					return nil, diags
+				}
+				elements[i] = convertedElem
+			}
+		}
+		return types.ListValueMust(types.StringType, elements), nil
+	default:
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
+			fmt.Sprintf("Unsupported type %T", v),
+			fmt.Sprintf("The value of type %T is not supported for conversion to Terraform value.", v),
+		)}
+	}
+}
+
+func convertGoMapToTfObject(ctx context.Context, m map[string]any) (types.Object, diag.Diagnostics) {
+	mapValues := make(map[string]attr.Value, len(m))
+	mapTypes := make(map[string]attr.Type, len(m))
+	for k, v := range m {
+		value, diags := convertGoValueToTfValue(ctx, v)
+		if diags.HasError() {
+			return types.ObjectNull(map[string]attr.Type{}), diags
+		}
+		mapValues[k] = value
+		mapTypes[k] = value.Type(ctx)
+	}
+	return types.ObjectValueFrom(ctx, mapTypes, mapValues)
+}
+
+func convertMapToDynamicValue(ctx context.Context, m map[string]any) (types.Dynamic, diag.Diagnostics) {
+	if m == nil {
+		return types.DynamicNull(), nil
+	}
+	if len(m) == 0 {
+		return types.DynamicNull(), nil
+	}
+	objectValue, diags := convertGoMapToTfObject(ctx, m)
+	if diags.HasError() {
+		return types.DynamicNull(), diags
+	}
+	dynamicValue := types.DynamicValue(objectValue)
+	return dynamicValue, nil
+}
+
+func convertTfValueToGoValue(ctx context.Context, value attr.Value) (any, diag.Diagnostics) {
+	if value.IsNull() || value.IsUnknown() {
+		return nil, nil
+	}
+	switch val := value.(type) {
+	case types.String:
+		return val.ValueString(), nil
+	case types.Bool:
+		return val.ValueBool(), nil
+	case types.Int64:
+		return val.ValueInt64(), nil
+	case types.Float64:
+		return val.ValueFloat64(), nil
+	case types.Object:
+		return convertTfObjectToGoMap(ctx, val)
+	case types.List:
+		elements := make([]any, len(val.Elements()))
+		for i, elem := range val.Elements() {
+			if elem.IsNull() || elem.IsUnknown() {
+				elements[i] = nil
+				continue
+			}
+			elemValue, diags := convertTfValueToGoValue(ctx, elem)
+			if diags.HasError() {
+				return nil, diags
+			}
+			elements[i] = elemValue
+		}
+		return elements, nil
+	default:
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
+			fmt.Sprintf("Unsupported type %T", value),
+			fmt.Sprintf("The value of type %T is not supported for conversion to Go map.", value),
+		)}
+	}
+}
+
+func convertTfObjectToGoMap(ctx context.Context, obj types.Object) (map[string]any, diag.Diagnostics) {
+	attrs := obj.Attributes()
+	m := make(map[string]any, len(attrs))
+	for k, v := range attrs {
+		val, diags := convertTfValueToGoValue(ctx, v)
+		if diags.HasError() {
+			return nil, diags
+		}
+		m[k] = val
+	}
+	return m, nil
+}
+
+func convertDynamicValueToMap(ctx context.Context, value types.Dynamic) (map[string]any, diag.Diagnostics) {
+	if value.IsNull() || value.IsUnknown() || value.IsUnderlyingValueNull() || value.IsUnderlyingValueUnknown() {
+		return nil, nil
+	}
+	uv := value.UnderlyingValue()
+	switch uv := uv.(type) {
+	case basetypes.ObjectValue:
+		convertedObj, diags := convertTfObjectToGoMap(ctx, uv)
+		if diags.HasError() {
+			return nil, diags
+		}
+		return convertedObj, nil
+	default:
+		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Invalid Dynamic Value Type",
+			"The dynamic value must be an object type.",
+		)}
+	}
 }
