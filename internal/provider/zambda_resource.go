@@ -45,6 +45,7 @@ type Zambda struct {
 	Schedule types.Object `tfsdk:"schedule"`
 	// FileInfo      FileInfo     `tfsdk:"file_info"`
 	FileInfo types.Object `tfsdk:"file_info"`
+	Source   types.String `tfsdk:"source"` // Pre-bundled source code of the Zambda function
 }
 
 func convertZambdaToClientZambda(ctx context.Context, zambda Zambda) client.ZambdaFunction {
@@ -81,7 +82,7 @@ func convertZambdaToClientZambda(ctx context.Context, zambda Zambda) client.Zamb
 	}
 }
 
-func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.ZambdaFunction) Zambda {
+func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.ZambdaFunction, existing Zambda) Zambda {
 	var fi types.Object
 	if clientZambda.FileInfo == nil {
 		fi = types.ObjectNull(
@@ -154,6 +155,7 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 		TriggerMethod: types.StringValue(string(*clientZambda.TriggerMethod)),
 		Schedule:      schedule,
 		FileInfo:      fi,
+		Source:        existing.Source,
 	}
 	return zambda
 }
@@ -254,6 +256,10 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					},
 				},
 			},
+			"source": schema.StringAttribute{
+				Optional:    true,
+				Description: "The pre-bundled source code of the Zambda function.",
+			},
 			"file_info": schema.SingleNestedAttribute{
 				Computed:    true,
 				Description: "Information about the uploaded file.",
@@ -310,7 +316,21 @@ func (r *ZambdaResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	retZambda := convertClientZambdaToZambda(ctx, createdZambda)
+	if plan.Source.ValueString() != "" {
+		err = r.client.Zambda.UploadZambdaSource(ctx, *createdZambda.ID, plan.Source.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Uploading Zambda Source", err.Error())
+			return
+		}
+	}
+
+	retrievedZambda, err := r.client.Zambda.GetZambda(ctx, *createdZambda.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
+		return
+	}
+
+	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan)
 
 	diags = resp.State.Set(ctx, retZambda)
 	resp.Diagnostics.Append(diags...)
@@ -334,7 +354,7 @@ func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	retZambda := convertClientZambdaToZambda(ctx, zambda)
+	retZambda := convertClientZambdaToZambda(ctx, zambda, state)
 
 	resp.State.Set(ctx, retZambda)
 }
@@ -359,7 +379,20 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	retZambda := convertClientZambdaToZambda(ctx, updatedZambda)
+	if plan.Source.ValueString() != "" {
+		err = r.client.Zambda.UploadZambdaSource(ctx, *updatedZambda.ID, plan.Source.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Uploading Zambda Source", err.Error())
+			return
+		}
+	}
+
+	retrievedZambda, err := r.client.Zambda.GetZambda(ctx, *updatedZambda.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Retrieving Updated Zambda", err.Error())
+		return
+	}
+	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan)
 
 	resp.State.Set(ctx, retZambda)
 }
