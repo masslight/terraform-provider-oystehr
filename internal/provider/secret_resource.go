@@ -28,6 +28,9 @@ func convertClientSecretToSecret(ctx context.Context, clientSecret *client.Secre
 	}
 }
 
+var _ resource.Resource = &SecretResource{}
+var _ resource.ResourceWithConfigure = &SecretResource{}
+
 type SecretResource struct {
 	client *client.Client
 }

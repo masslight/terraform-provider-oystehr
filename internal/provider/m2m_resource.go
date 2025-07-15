@@ -49,6 +49,9 @@ func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M) M2M {
 	}
 }
 
+var _ resource.Resource = &M2MResource{}
+var _ resource.ResourceWithConfigure = &M2MResource{}
+
 type M2MResource struct {
 	client *client.Client
 }

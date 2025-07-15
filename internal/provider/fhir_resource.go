@@ -90,6 +90,9 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 	}, nil
 }
 
+var _ resource.Resource = &FhirResource{}
+var _ resource.ResourceWithConfigure = &FhirResource{}
+
 type FhirResource struct {
 	client *client.Client
 }

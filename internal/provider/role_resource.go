@@ -34,6 +34,9 @@ func convertClientRoleToRole(ctx context.Context, clientRole *client.Role) Role 
 	}
 }
 
+var _ resource.Resource = &RoleResource{}
+var _ resource.ResourceWithConfigure = &RoleResource{}
+
 type RoleResource struct {
 	client *client.Client
 }

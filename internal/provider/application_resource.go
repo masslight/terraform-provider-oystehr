@@ -73,6 +73,9 @@ func applicationToClientApp(plan Application) client.Application {
 	return app
 }
 
+var _ resource.Resource = &ApplicationResource{}
+var _ resource.ResourceWithConfigure = &ApplicationResource{}
+
 type ApplicationResource struct {
 	client *client.Client
 }
