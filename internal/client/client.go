@@ -14,6 +14,7 @@ type Client struct {
 	Role        *roleClient
 	M2M         *m2mClient
 	Secret      *secretClient
+	Z3          *z3Client
 	Zambda      *zambdaClient
 }
 
@@ -29,6 +30,7 @@ func New(config ClientConfig) *Client {
 		Role:        newRoleClient(config),
 		M2M:         newM2MClient(config),
 		Secret:      newSecretClient(config),
+		Z3:          newZ3Client(config),
 		Zambda:      newZambdaClient(config),
 	}
 }
