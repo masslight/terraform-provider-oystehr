@@ -97,6 +97,7 @@ func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewRoleResource,
 		NewSecretResource,
 		NewZ3BucketResource,
+		NewZ3ObjectResource,
 		NewZambdaResource,
 	}
 }

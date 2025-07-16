@@ -443,15 +443,23 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	var plan Zambda
 	var state Zambda
 
+	if req.Plan.Raw.IsNull() {
+		// If the plan is null, we cannot modify it, so we return early.
+		tflog.Info(ctx, "Zambda plan is null, skipping modification")
+		resp.Plan = req.Plan
+		return
+	}
+
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
-	diags = req.State.Get(ctx, &state)
+	if !req.State.Raw.IsNull() {
+		diags = req.State.Get(ctx, &state)
+	}
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If source is set, we need to ensure it is a valid file path
 	tflog.Info(ctx, "Validating Zambda source file path", map[string]interface{}{
 		"source": plan.Source.ValueString(),
 	})
