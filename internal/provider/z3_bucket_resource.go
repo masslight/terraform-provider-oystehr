@@ -3,13 +3,19 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
+
+type Z3BucketIdentityModel struct {
+	Name types.String `tfsdk:"name"`
+}
 
 type Z3Bucket struct {
 	ID   types.String `tfsdk:"id"`
@@ -32,6 +38,8 @@ func convertClientBucketToZ3Bucket(clientBucket *client.Bucket) Z3Bucket {
 
 var _ resource.Resource = &Z3BucketResource{}
 var _ resource.ResourceWithConfigure = &Z3BucketResource{}
+var _ resource.ResourceWithIdentity = &Z3BucketResource{}
+var _ resource.ResourceWithImportState = &Z3BucketResource{}
 
 type Z3BucketResource struct {
 	client *client.Client
@@ -58,6 +66,17 @@ func (r *Z3BucketResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+			},
+		},
+	}
+}
+
+func (R *Z3BucketResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"name": identityschema.StringAttribute{
+				Description:       "The name of the Z3 bucket.",
+				RequiredForImport: true,
 			},
 		},
 	}
@@ -97,17 +116,23 @@ func (r *Z3BucketResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	retZ3Bucket := convertClientBucketToZ3Bucket(createdBucket)
-	diags = resp.State.Set(ctx, retZ3Bucket)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	identity := Z3BucketIdentityModel{
+		Name: retZ3Bucket.Name,
 	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Z3Bucket
+	var identity Z3BucketIdentityModel
+
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -119,8 +144,12 @@ func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	retZ3Bucket := convertClientBucketToZ3Bucket(clientBucket)
-	diags = resp.State.Set(ctx, retZ3Bucket)
-	resp.Diagnostics.Append(diags...)
+	retIdentity := Z3BucketIdentityModel{
+		Name: retZ3Bucket.Name,
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -143,4 +172,8 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
 		return
 	}
+}
+
+func (r *Z3BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("name"), path.Root("name"), req, resp)
 }

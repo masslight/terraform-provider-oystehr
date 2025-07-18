@@ -3,14 +3,23 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
+
+type FhirResourceIdentityModel struct {
+	ID   types.String `tfsdk:"id"`
+	Type types.String `tfsdk:"type"`
+}
 
 type FhirResourceData struct {
 	ID   types.String `tfsdk:"id"`
@@ -92,6 +101,8 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 
 var _ resource.Resource = &FhirResource{}
 var _ resource.ResourceWithConfigure = &FhirResource{}
+var _ resource.ResourceWithIdentity = &FhirResource{}
+var _ resource.ResourceWithImportState = &FhirResource{}
 
 type FhirResource struct {
 	client *client.Client
@@ -133,6 +144,21 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						Description: "The version ID of the FHIR resource.",
 					},
 				},
+			},
+		},
+	}
+}
+
+func (*FhirResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				Description:       "The ID of the FHIR resource.",
+				RequiredForImport: true,
+			},
+			"type": identityschema.StringAttribute{
+				Description:       "The FHIR resource type (e.g., Patient, Observation).",
+				RequiredForImport: true,
 			},
 		},
 	}
@@ -181,19 +207,23 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	diags = resp.State.Set(ctx, resource)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	identity := FhirResourceIdentityModel{
+		ID:   resource.ID,
+		Type: resource.Type,
 	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state FhirResourceData
+	var identity FhirResourceIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -209,8 +239,13 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	retIdentity := FhirResourceIdentityModel{
+		ID:   resource.ID,
+		Type: resource.Type,
+	}
 
-	resp.State.Set(ctx, resource)
+	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -260,4 +295,39 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError("Error Deleting FHIR Resource", err.Error())
 		return
 	}
+}
+
+func (r *FhirResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if req.ID != "" {
+		parts := strings.Split(req.ID, "/")
+		tflog.Info(ctx, "Importing FHIR Resource by id", map[string]interface{}{
+			"import_id": req.ID,
+			"type":      parts[0],
+			"id":        parts[1],
+		})
+		if len(parts) == 2 {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(parts[1]))...)
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), types.StringValue(parts[0]))...)
+			return
+		} else {
+			resp.Diagnostics.AddError(
+				"Invalid Import ID",
+				"Expected format is 'resourceType/id', but got: "+req.ID,
+			)
+			return
+		}
+	}
+
+	var identity FhirResourceIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	tflog.Info(ctx, "Importing FHIR Resource using identity", map[string]interface{}{
+		"import_id": req.ID,
+		"type":      identity.Type.ValueString(),
+		"id":        identity.ID.ValueString(),
+	})
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(identity.ID.ValueString()))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), types.StringValue(identity.Type.ValueString()))...)
 }

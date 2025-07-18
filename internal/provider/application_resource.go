@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -75,6 +76,8 @@ func applicationToClientApp(plan Application) client.Application {
 
 var _ resource.Resource = &ApplicationResource{}
 var _ resource.ResourceWithConfigure = &ApplicationResource{}
+var _ resource.ResourceWithIdentity = &ApplicationResource{}
+var _ resource.ResourceWithImportState = &ApplicationResource{}
 
 type ApplicationResource struct {
 	client *client.Client
@@ -177,6 +180,10 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+func (r *ApplicationResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = idIdentitySchema
+}
+
 func (r *ApplicationResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -212,37 +219,58 @@ func (r *ApplicationResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	retApp := clientAppToApplication(ctx, createdApp)
+	identity := IDIdentityModel{
+		ID: retApp.ID,
+	}
 
-	resp.State.Set(ctx, retApp)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retApp)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Application
+	var identity IDIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var id string
+	if !identity.ID.IsNull() {
+		id = identity.ID.ValueString()
+	} else {
+		id = state.ID.ValueString()
+	}
 
-	app, err := r.client.Application.GetApplication(ctx, state.ID.ValueString())
+	app, err := r.client.Application.GetApplication(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Application", err.Error())
 		return
 	}
 
 	retApp := clientAppToApplication(ctx, app)
+	retIdentity := IDIdentityModel{
+		ID: retApp.ID,
+	}
 
-	resp.State.Set(ctx, retApp)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retApp)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan Application
 	var state Application
+	var identity IDIdentityModel
 
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	diags = req.Identity.Get(ctx, &identity)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -250,7 +278,7 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 
 	app := applicationToClientApp(plan)
 
-	updatedApp, err := r.client.Application.UpdateApplication(ctx, state.ID.ValueString(), &app)
+	updatedApp, err := r.client.Application.UpdateApplication(ctx, identity.ID.ValueString(), &app)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Application", err.Error())
 		return
@@ -263,16 +291,23 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 
 func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state Application
+	var identity IDIdentityModel
 
 	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	diags = req.Identity.Get(ctx, &identity)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	err := r.client.Application.DeleteApplication(ctx, state.ID.ValueString())
+	err := r.client.Application.DeleteApplication(ctx, identity.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting Application", err.Error())
 		return
 	}
+}
+
+func (r *ApplicationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
 }

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,6 +37,8 @@ func convertClientRoleToRole(ctx context.Context, clientRole *client.Role) Role 
 
 var _ resource.Resource = &RoleResource{}
 var _ resource.ResourceWithConfigure = &RoleResource{}
+var _ resource.ResourceWithIdentity = &RoleResource{}
+var _ resource.ResourceWithImportState = &RoleResource{}
 
 type RoleResource struct {
 	client *client.Client
@@ -73,6 +76,10 @@ func (r *RoleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 	}
 }
 
+func (*RoleResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = idIdentitySchema
+}
+
 func (r *RoleResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -108,28 +115,47 @@ func (r *RoleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	retRole := convertClientRoleToRole(ctx, createdRole)
+	identity := IDIdentityModel{
+		ID: retRole.ID,
+	}
 
-	resp.State.Set(ctx, retRole)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retRole)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Role
+	var identity IDIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	role, err := r.client.Role.GetRole(ctx, state.ID.ValueString())
+	var id string
+	if !identity.ID.IsNull() {
+		id = identity.ID.ValueString()
+	} else {
+		id = state.ID.ValueString()
+	}
+
+	role, err := r.client.Role.GetRole(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Role", err.Error())
 		return
 	}
 
 	retRole := convertClientRoleToRole(ctx, role)
+	retIdentity := IDIdentityModel{
+		ID: retRole.ID,
+	}
 
-	resp.State.Set(ctx, retRole)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retRole)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -171,4 +197,8 @@ func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError("Error Deleting Role", err.Error())
 		return
 	}
+}
+
+func (r *RoleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
 }

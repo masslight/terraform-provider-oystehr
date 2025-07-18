@@ -2,8 +2,11 @@ package provider
 
 import (
 	"context"
+	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -21,6 +24,11 @@ type Z3Object struct {
 	SourceChecksum types.String `tfsdk:"source_checksum"`
 }
 
+type Z3ObjectIdentityModel struct {
+	Bucket types.String `tfsdk:"bucket"`
+	Key    types.String `tfsdk:"key"`
+}
+
 func convertClientObjectToZ3Object(clientObject *client.Object, bucket, source, sourceChecksum string) Z3Object {
 	return Z3Object{
 		Bucket:         types.StringValue(bucket),
@@ -34,6 +42,8 @@ func convertClientObjectToZ3Object(clientObject *client.Object, bucket, source, 
 var _ resource.Resource = &Z3ObjectResource{}
 var _ resource.ResourceWithConfigure = &Z3ObjectResource{}
 var _ resource.ResourceWithModifyPlan = &Z3ObjectResource{}
+var _ resource.ResourceWithIdentity = &Z3ObjectResource{}
+var _ resource.ResourceWithImportState = &Z3ObjectResource{}
 
 type Z3ObjectResource struct {
 	client *client.Client
@@ -72,6 +82,21 @@ func (r *Z3ObjectResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"last_modified": schema.StringAttribute{
 				Computed:    true,
 				Description: "The last modified timestamp of the Z3 object.",
+			},
+		},
+	}
+}
+
+func (*Z3ObjectResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"bucket": identityschema.StringAttribute{
+				Description:       "The name of the Z3 bucket.",
+				RequiredForImport: true,
+			},
+			"key": identityschema.StringAttribute{
+				Description:       "The key of the Z3 object.",
+				RequiredForImport: true,
 			},
 		},
 	}
@@ -120,12 +145,22 @@ func (r *Z3ObjectResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	result := convertClientObjectToZ3Object(returnedObject, plan.Bucket.ValueString(), plan.Source.ValueString(), plan.SourceChecksum.ValueString())
+	identity := Z3ObjectIdentityModel{
+		Bucket: types.StringValue(plan.Bucket.ValueString()),
+		Key:    types.StringValue(plan.Key.ValueString()),
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, result)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Z3Object
+	var identity Z3ObjectIdentityModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -149,7 +184,13 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 	})
 
 	result := convertClientObjectToZ3Object(object, state.Bucket.ValueString(), state.Source.ValueString(), state.SourceChecksum.ValueString())
+	retIdentity := Z3ObjectIdentityModel{
+		Bucket: types.StringValue(state.Bucket.ValueString()),
+		Key:    types.StringValue(state.Key.ValueString()),
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, result)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -260,4 +301,29 @@ func (r *Z3ObjectResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		"plan_source_checksum": plan.SourceChecksum.ValueString(),
 	})
 	resp.Plan.Set(ctx, &plan)
+}
+
+func (r *Z3ObjectResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if req.ID != "" {
+		bucket, key, found := strings.Cut(req.ID, "/")
+		if found {
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("bucket"), types.StringValue(bucket))...)
+			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("key"), types.StringValue(key))...)
+			return
+		} else {
+			resp.Diagnostics.AddError(
+				"Invalid Import ID",
+				"Expected format is 'bucket/key' but got: "+req.ID,
+			)
+			return
+		}
+	}
+
+	var identity Z3ObjectIdentityModel
+	resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("bucket"), types.StringValue(identity.Bucket.ValueString()))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("key"), types.StringValue(identity.Key.ValueString()))...)
 }

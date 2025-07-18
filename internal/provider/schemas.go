@@ -2,9 +2,14 @@ package provider
 
 import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+type IDIdentityModel struct {
+	ID types.String `tfsdk:"id"`
+}
 
 var (
 	accessPolicyAttributes = map[string]schema.Attribute{
@@ -67,5 +72,13 @@ var (
 	}
 	roleStubType = types.ObjectType{
 		AttrTypes: roleStubAttributesType,
+	}
+	idIdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"id": identityschema.StringAttribute{
+				Description:       "The ID of the resource.",
+				RequiredForImport: true,
+			},
+		},
 	}
 )

@@ -3,11 +3,17 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
+
+type SecretIdentityModel struct {
+	Name types.String `tfsdk:"name"`
+}
 
 type Secret struct {
 	Name  types.String `tfsdk:"name"`
@@ -30,6 +36,8 @@ func convertClientSecretToSecret(ctx context.Context, clientSecret *client.Secre
 
 var _ resource.Resource = &SecretResource{}
 var _ resource.ResourceWithConfigure = &SecretResource{}
+var _ resource.ResourceWithIdentity = &SecretResource{}
+var _ resource.ResourceWithImportState = &SecretResource{}
 
 type SecretResource struct {
 	client *client.Client
@@ -54,6 +62,17 @@ func (r *SecretResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Required:    true,
 				Description: "The value of the secret.",
 				Sensitive:   true,
+			},
+		},
+	}
+}
+
+func (*SecretResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = identityschema.Schema{
+		Attributes: map[string]identityschema.Attribute{
+			"name": identityschema.StringAttribute{
+				Description:       "The name of the secret.",
+				RequiredForImport: true,
 			},
 		},
 	}
@@ -93,25 +112,48 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	resp.State.Set(ctx, convertClientSecretToSecret(ctx, createdSecret))
+	retSecret := convertClientSecretToSecret(ctx, createdSecret)
+	identity := SecretIdentityModel{
+		Name: retSecret.Name,
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retSecret)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Secret
+	var identity SecretIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	secret, err := r.client.Secret.GetSecret(ctx, state.Name.ValueString())
+	var name string
+	if !identity.Name.IsNull() {
+		name = identity.Name.ValueString()
+	} else {
+		name = state.Name.ValueString()
+	}
+
+	secret, err := r.client.Secret.GetSecret(ctx, name)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Secret", err.Error())
 		return
 	}
 
-	resp.State.Set(ctx, convertClientSecretToSecret(ctx, secret))
+	retSecret := convertClientSecretToSecret(ctx, secret)
+	retIdentity := SecretIdentityModel{
+		Name: retSecret.Name,
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retSecret)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -148,4 +190,8 @@ func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		resp.Diagnostics.AddError("Error Deleting Secret", err.Error())
 		return
 	}
+}
+
+func (r *SecretResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("name"), path.Root("name"), req, resp)
 }

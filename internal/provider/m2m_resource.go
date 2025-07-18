@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
@@ -51,6 +52,8 @@ func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M) M2M {
 
 var _ resource.Resource = &M2MResource{}
 var _ resource.ResourceWithConfigure = &M2MResource{}
+var _ resource.ResourceWithIdentity = &M2MResource{}
+var _ resource.ResourceWithImportState = &M2MResource{}
 
 type M2MResource struct {
 	client *client.Client
@@ -116,6 +119,10 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 	}
 }
 
+func (*M2MResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = idIdentitySchema
+}
+
 func (r *M2MResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
@@ -151,32 +158,46 @@ func (r *M2MResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	retM2M := convertClientM2MToM2M(ctx, createdM2M)
-
-	diags = resp.State.Set(ctx, retM2M)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	identity := IDIdentityModel{
+		ID: retM2M.ID,
 	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retM2M)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *M2MResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state M2M
+	var identity IDIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var id string
+	if !identity.ID.IsNull() {
+		id = identity.ID.ValueString()
+	} else {
+		id = state.ID.ValueString()
+	}
 
-	m2m, err := r.client.M2M.GetM2M(ctx, state.ID.ValueString())
+	m2m, err := r.client.M2M.GetM2M(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading M2M", err.Error())
 		return
 	}
 
 	retM2M := convertClientM2MToM2M(ctx, m2m)
+	retIdentity := IDIdentityModel{
+		ID: retM2M.ID,
+	}
 
-	resp.State.Set(ctx, retM2M)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retM2M)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -218,4 +239,8 @@ func (r *M2MResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		resp.Diagnostics.AddError("Error Deleting M2M", err.Error())
 		return
 	}
+}
+
+func (r *M2MResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
 }

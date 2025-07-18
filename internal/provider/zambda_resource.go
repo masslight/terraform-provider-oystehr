@@ -4,13 +4,12 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -150,6 +149,12 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 			},
 		}, tfSchedule)
 	}
+	var derivedSource types.String
+	if source == "" {
+		derivedSource = types.StringNull()
+	} else {
+		derivedSource = types.StringValue(source)
+	}
 	zambda := Zambda{
 		ID:             stringPointerToTfString(clientZambda.ID),
 		Name:           stringPointerToTfString(clientZambda.Name),
@@ -160,14 +165,17 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 		TriggerMethod:  types.StringValue(string(*clientZambda.TriggerMethod)),
 		Schedule:       schedule,
 		FileInfo:       fi,
-		Source:         types.StringValue(source),
+		Source:         derivedSource,
 		SourceChecksum: types.StringValue(sourceChecksum),
 	}
 	return zambda
 }
 
 var _ resource.Resource = (*ZambdaResource)(nil)
+var _ resource.ResourceWithConfigure = &ZambdaResource{}
 var _ resource.ResourceWithModifyPlan = (*ZambdaResource)(nil)
+var _ resource.ResourceWithIdentity = &ZambdaResource{}
+var _ resource.ResourceWithImportState = &ZambdaResource{}
 
 type ZambdaResource struct {
 	client *client.Client
@@ -272,9 +280,9 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"source_checksum": schema.StringAttribute{
 				Computed:    true,
 				Description: "The checksum of the Zambda source code.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				// PlanModifiers: []planmodifier.String{
+				// 	stringplanmodifier.RequiresReplace(),
+				// },
 			},
 			"file_info": schema.SingleNestedAttribute{
 				Computed:    true,
@@ -296,6 +304,10 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 		},
 	}
+}
+
+func (*ZambdaResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = idIdentitySchema
 }
 
 func (r *ZambdaResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -347,32 +359,47 @@ func (r *ZambdaResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan.Source.ValueString(), plan.SourceChecksum.ValueString())
-
-	diags = resp.State.Set(ctx, retZambda)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	identity := IDIdentityModel{
+		ID: retZambda.ID,
 	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
 
 func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state Zambda
+	var identity IDIdentityModel
 
 	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	zambda, err := r.client.Zambda.GetZambda(ctx, state.ID.ValueString())
+	var id string
+	if !identity.ID.IsNull() {
+		id = identity.ID.ValueString()
+	} else {
+		id = state.ID.ValueString()
+	}
+
+	zambda, err := r.client.Zambda.GetZambda(ctx, id)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Reading Zambda", err.Error())
 		return
 	}
 
 	retZambda := convertClientZambdaToZambda(ctx, zambda, state.Source.ValueString(), state.SourceChecksum.ValueString())
+	retIdentity := IDIdentityModel{
+		ID: retZambda.ID,
+	}
 
-	resp.State.Set(ctx, retZambda)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -461,7 +488,8 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 	}
 
 	tflog.Info(ctx, "Validating Zambda source file path", map[string]interface{}{
-		"source": plan.Source.ValueString(),
+		"source":         plan.Source.ValueString(),
+		"source_is_null": plan.Source.IsNull(),
 	})
 	if plan.Source.ValueString() != "" {
 		sourceChecksum, err := fs.Sha256HashFile(plan.Source.ValueString())
@@ -487,4 +515,8 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		"plan_source_checksum": plan.SourceChecksum.ValueString(),
 	})
 	resp.Plan.Set(ctx, &plan)
+}
+
+func (r *ZambdaResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
 }
