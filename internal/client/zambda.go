@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 type TriggerMethod string
@@ -158,7 +156,6 @@ func (c *zambdaClient) UploadZambdaSource(ctx context.Context, id string, source
 	url := fmt.Sprintf("%s/%s/s3-upload", zambdaBaseURL, id)
 
 	filename := path.Base(source)
-	tflog.Info(ctx, fmt.Sprintf("Initiating Zambda source upload for %s to %s", filename, url))
 
 	body, err := json.Marshal(map[string]string{"filename": filename})
 	if err != nil {
@@ -176,7 +173,6 @@ func (c *zambdaClient) UploadZambdaSource(ctx context.Context, id string, source
 	if err := json.Unmarshal(responseBody, &uploadInfo); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
-	tflog.Info(ctx, fmt.Sprintf("Received signed URL for Zambda source upload: %s", uploadInfo.SignedUrl))
 
 	return uploadToS3(ctx, uploadInfo.SignedUrl, source)
 }

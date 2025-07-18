@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 	"github.com/masslight/terraform-provider-oystehr/internal/fs"
 )
@@ -472,7 +471,6 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 
 	if req.Plan.Raw.IsNull() {
 		// If the plan is null, we cannot modify it, so we return early.
-		tflog.Info(ctx, "Zambda plan is null, skipping modification")
 		resp.Plan = req.Plan
 		return
 	}
@@ -487,20 +485,12 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		return
 	}
 
-	tflog.Info(ctx, "Validating Zambda source file path", map[string]interface{}{
-		"source":         plan.Source.ValueString(),
-		"source_is_null": plan.Source.IsNull(),
-	})
 	if plan.Source.ValueString() != "" {
 		sourceChecksum, err := fs.Sha256HashFile(plan.Source.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Calculating Source Checksum", err.Error())
 			return
 		}
-		tflog.Info(ctx, "Calculated Zambda source checksum", map[string]interface{}{
-			"source_checksum":       sourceChecksum,
-			"state_source_checksum": state.SourceChecksum.ValueString(),
-		})
 		if sourceChecksum != state.SourceChecksum.ValueString() {
 			plan.SourceChecksum = types.StringValue(sourceChecksum)
 			plan.FileInfo = types.ObjectUnknown(map[string]attr.Type{
@@ -511,9 +501,6 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 		}
 	}
 
-	tflog.Info(ctx, "Final Zambda source checksum", map[string]interface{}{
-		"plan_source_checksum": plan.SourceChecksum.ValueString(),
-	})
 	resp.Plan.Set(ctx, &plan)
 }
 

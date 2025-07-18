@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
@@ -300,11 +299,6 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 func (r *FhirResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	if req.ID != "" {
 		parts := strings.Split(req.ID, "/")
-		tflog.Info(ctx, "Importing FHIR Resource by id", map[string]interface{}{
-			"import_id": req.ID,
-			"type":      parts[0],
-			"id":        parts[1],
-		})
 		if len(parts) == 2 {
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(parts[1]))...)
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), types.StringValue(parts[0]))...)
@@ -323,11 +317,6 @@ func (r *FhirResource) ImportState(ctx context.Context, req resource.ImportState
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "Importing FHIR Resource using identity", map[string]interface{}{
-		"import_id": req.ID,
-		"type":      identity.Type.ValueString(),
-		"id":        identity.ID.ValueString(),
-	})
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), types.StringValue(identity.ID.ValueString()))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), types.StringValue(identity.Type.ValueString()))...)
 }

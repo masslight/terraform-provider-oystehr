@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 	"github.com/masslight/terraform-provider-oystehr/internal/fs"
 )
@@ -165,10 +164,6 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	tflog.Info(ctx, "Reading Z3 Object", map[string]interface{}{
-		"bucket": state.Bucket.ValueString(),
-		"key":    state.Key.ValueString(),
-	})
 	object, err := r.client.Z3.ListObject(ctx, state.Bucket.ValueString(), state.Key.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -177,11 +172,6 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 		)
 		return
 	}
-	tflog.Info(ctx, "Retrieved Z3 Object", map[string]interface{}{
-		"bucket": state.Bucket.ValueString(),
-		"key":    state.Key.ValueString(),
-		"object": object,
-	})
 
 	result := convertClientObjectToZ3Object(object, state.Bucket.ValueString(), state.Source.ValueString(), state.SourceChecksum.ValueString())
 	retIdentity := Z3ObjectIdentityModel{
@@ -245,7 +235,6 @@ func (r *Z3ObjectResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 
 	if req.Plan.Raw.IsNull() {
 		// If the plan is null, we cannot modify it, so we return early.
-		tflog.Info(ctx, "Z3 Object plan is null, skipping modification")
 		resp.Plan = req.Plan
 		return
 	}
@@ -256,50 +245,22 @@ func (r *Z3ObjectResource) ModifyPlan(ctx context.Context, req resource.ModifyPl
 		diags = req.State.Get(ctx, &state)
 	}
 	resp.Diagnostics.Append(diags...)
-	tflog.Info(ctx, "Modifying Z3 Object Plan", map[string]interface{}{
-		"plan": map[string]interface{}{
-			"bucket":          plan.Bucket.ValueString(),
-			"key":             plan.Key.ValueString(),
-			"source":          plan.Source.ValueString(),
-			"source_checksum": plan.SourceChecksum.ValueString(),
-			"last_modified":   plan.LastModified.ValueString(),
-		},
-		"plan is null": req.Plan.Raw.IsNull(),
-		"state": map[string]interface{}{
-			"bucket":          state.Bucket.ValueString(),
-			"key":             state.Key.ValueString(),
-			"source":          state.Source.ValueString(),
-			"source_checksum": state.SourceChecksum.ValueString(),
-			"last_modified":   state.LastModified.ValueString(),
-		},
-		"state is null": req.State.Raw.IsNull(),
-	})
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Info(ctx, "Validating z3 source file path", map[string]interface{}{
-		"source": plan.Source.ValueString(),
-	})
 	if plan.Source.ValueString() != "" {
 		sourceChecksum, err := fs.Sha256HashFile(plan.Source.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Calculating Source Checksum", err.Error())
 			return
 		}
-		tflog.Info(ctx, "Calculated z3 source checksum", map[string]interface{}{
-			"source_checksum":       sourceChecksum,
-			"state_source_checksum": state.SourceChecksum.ValueString(),
-		})
 		plan.SourceChecksum = types.StringValue(sourceChecksum)
 		if sourceChecksum != state.SourceChecksum.ValueString() {
 			plan.LastModified = types.StringUnknown()
 		}
 	}
 
-	tflog.Info(ctx, "Final z3 source checksum", map[string]interface{}{
-		"plan_source_checksum": plan.SourceChecksum.ValueString(),
-	})
 	resp.Plan.Set(ctx, &plan)
 }
 
