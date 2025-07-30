@@ -216,3 +216,18 @@ import {
   # Use `BucketName/Key` format to import Z3 objects by ID
   id = "example_bucket/test/lorem-ipsum.zip"
 }
+
+resource "oystehr_lab_route" "example" {
+  account_number = "284c0181-b84f-4637-8585-c3d04298afcc"
+  lab_id         = "790b282d-77e9-4697-9f59-0cef8238033a"
+}
+
+resource "oystehr_lab_route" "example2" {
+  account_number = "bc94b94c-3d2e-4a77-92a3-4570b834eae5"
+  lab_id         = "790b282d-77e9-4697-9f59-0cef8238033a"
+}
+
+import {
+  to = oystehr_lab_route.example2
+  id = "6607e9c4-4258-4fcc-8454-76bcf29ff684"
+}

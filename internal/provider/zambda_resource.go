@@ -279,9 +279,6 @@ func (r *ZambdaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"source_checksum": schema.StringAttribute{
 				Computed:    true,
 				Description: "The checksum of the Zambda source code.",
-				// PlanModifiers: []planmodifier.String{
-				// 	stringplanmodifier.RequiresReplace(),
-				// },
 			},
 			"file_info": schema.SingleNestedAttribute{
 				Computed:    true,
