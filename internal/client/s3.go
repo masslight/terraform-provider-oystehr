@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/masslight/terraform-provider-oystehr/internal/fs"
 )
 
 func uploadToS3(ctx context.Context, url string, source string) error {
 	var body bytes.Buffer
-	data, err := os.ReadFile(source)
+	data, err := os.ReadFile(fs.CleanPath(source))
 	if err != nil {
 		return fmt.Errorf("failed to read source file: %w", err)
 	}
