@@ -9,10 +9,11 @@ type ClientConfig struct {
 
 type Client struct {
 	config      ClientConfig
-	Fhir        *fhirClient
 	Application *applicationClient
-	Role        *roleClient
+	Fhir        *fhirClient
+	Lab         *labClient
 	M2M         *m2mClient
+	Role        *roleClient
 	Secret      *secretClient
 	Z3          *z3Client
 	Zambda      *zambdaClient
@@ -25,10 +26,11 @@ func (c *Client) Request() {
 func New(config ClientConfig) *Client {
 	return &Client{
 		config:      config,
-		Fhir:        newFhirClient(config),
 		Application: newApplicationClient(config),
-		Role:        newRoleClient(config),
+		Fhir:        newFhirClient(config),
+		Lab:         newLabClient(config),
 		M2M:         newM2MClient(config),
+		Role:        newRoleClient(config),
 		Secret:      newSecretClient(config),
 		Z3:          newZ3Client(config),
 		Zambda:      newZambdaClient(config),

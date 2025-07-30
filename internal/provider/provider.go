@@ -93,6 +93,7 @@ func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resou
 	return []func() resource.Resource{
 		NewApplicationResource,
 		NewFhirResource,
+		NewLabRouteResource,
 		NewM2MResource,
 		NewRoleResource,
 		NewSecretResource,
