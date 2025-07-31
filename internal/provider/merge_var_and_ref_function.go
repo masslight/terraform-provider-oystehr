@@ -72,6 +72,7 @@ func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunReques
 		vars = variablesUnderlying.Attributes()
 	default:
 		resp.Error = function.ConcatFuncErrors(resp.Error, function.NewFuncError(fmt.Sprintf("variables must be a map, got %T", variablesUnderlying)))
+		return
 	}
 
 	// Vars
@@ -80,8 +81,7 @@ func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunReques
 		varName := match[1]
 		vv, ok := vars[varName]
 		if ok {
-			// instead of trimming we should get tfvalue and .As(*string)
-			value = regexpVar.ReplaceAllString(value, getStringFromValue(vv))
+			value = strings.Replace(value, match[0], getStringFromValue(vv), 1)
 		}
 	}
 
@@ -95,7 +95,7 @@ func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunReques
 		if ok {
 			_, ok := getValueOrValueFromMap(rc, key)
 			if ok {
-				value = regexpRef.ReplaceAllString(value, getTerraformRef(resource, component, key, property))
+				value = strings.Replace(value, match[0], getTerraformRef(resource, component, key, property), 1)
 			}
 		}
 	}
