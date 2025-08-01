@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -39,9 +40,15 @@ func (f *MergeVarAndRefFunction) Definition(_ context.Context, _ function.Defini
 				Name:        "value",
 				Description: "The template string to merge values into. It can contain variables and references in the form of #{var/VAR_NAME} and #{ref/component/KEY/property.access.path}.",
 			},
-			function.StringParameter{
+			function.MapParameter{
 				Name:        "resource",
-				Description: "The Oystehr Terraform provider resource. Used for constructing references.",
+				Description: "A map of component names to their resource values. Used to resolve references in the template string.",
+				ElementType: basetypes.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"resource": basetypes.StringType{},
+						"instance": basetypes.StringType{},
+					},
+				},
 			},
 			function.DynamicParameter{
 				Name:        "variables",
@@ -58,11 +65,24 @@ func (f *MergeVarAndRefFunction) Definition(_ context.Context, _ function.Defini
 
 func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
 	var value string
-	var resource string
+	var resourceMapParam basetypes.MapValue
 	var variables basetypes.DynamicValue
 	var spec basetypes.DynamicValue
 
-	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &value, &resource, &variables, &spec))
+	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &value, &resourceMapParam, &variables, &spec))
+	if resp.Error != nil {
+		return
+	}
+
+	if value == "" {
+		resp.Error = function.ConcatFuncErrors(resp.Error, resp.Result.Set(ctx, value))
+		return
+	}
+
+	if resourceMapParam.IsNull() || variables.IsNull() || spec.IsNull() {
+		resp.Error = function.ConcatFuncErrors(resp.Error, function.NewFuncError("resourceMap, variables, and spec must not be null"))
+		return
+	}
 
 	var vars map[string]attr.Value
 	switch variablesUnderlying := variables.UnderlyingValue().(type) {
@@ -77,6 +97,12 @@ func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunReques
 
 	// Vars
 	matches := regexpVar.FindAllStringSubmatch(value, -1)
+	if len(matches) > 0 {
+		tflog.Debug(ctx, "Found variable matches", map[string]interface{}{
+			"value":   value,
+			"matches": matches,
+		})
+	}
 	for _, match := range matches {
 		varName := match[1]
 		vv, ok := vars[varName]
@@ -87,34 +113,75 @@ func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunReques
 
 	// Refs
 	matches = regexpRef.FindAllStringSubmatch(value, -1)
+	if len(matches) > 0 {
+		tflog.Debug(ctx, "Found reference matches", map[string]interface{}{
+			"value":   value,
+			"matches": matches,
+		})
+		// matches=["[#{ref/fhirResources/LOCATION_TELEMED_OH/id} fhirResources LOCATION_TELEMED_OH id]"]
+		// "{\"active\":true,\"actor\":[{\"reference\":\"#{ref/fhirResources/LOCATION_TELEMED_OH/id}\"}],..."
+	}
 	for _, match := range matches {
 		component := match[1]
 		key := match[2]
 		property := match[3]
-		rc, ok := getValueOrValueFromMap(spec.UnderlyingValue(), component)
+		rc, ok := getValueOrValueFromMap(ctx, spec.UnderlyingValue(), component)
 		if ok {
-			_, ok := getValueOrValueFromMap(rc, key)
+			tflog.Debug(ctx, "Found component in spec", map[string]interface{}{
+				"component": component,
+				"value":     value,
+			})
+			_, ok := getValueOrValueFromMap(ctx, rc, key)
 			if ok {
-				value = strings.Replace(value, match[0], getTerraformRef(resource, component, key, property), 1)
+				tflog.Debug(ctx, "Found key in spec", map[string]interface{}{
+					"component": component,
+					"key":       key,
+					"value":     value,
+				})
+				ref, err := getTerraformRef(ctx, resourceMapParam.Elements(), component, key, property)
+				if err != nil {
+					resp.Error = function.ConcatFuncErrors(resp.Error, function.NewFuncError(err.Error()))
+					return
+				}
+				value = strings.Replace(value, match[0], ref, 1)
 			}
 		}
 	}
 
+	tflog.Debug(ctx, "Final merged value", map[string]interface{}{
+		"value": value,
+	})
 	resp.Error = function.ConcatFuncErrors(resp.Error, resp.Result.Set(ctx, value))
 }
 
-func getValueOrValueFromMap(m attr.Value, key string) (attr.Value, bool) {
+func getValueOrValueFromMap(ctx context.Context, m attr.Value, key string) (attr.Value, bool) {
 	if m == nil {
+		tflog.Debug(ctx, "Map value is nil", map[string]interface{}{
+			"key": key,
+		})
 		return nil, false
 	}
 	switch mv := m.(type) {
 	case basetypes.MapValue:
+		tflog.Debug(ctx, "Found map value", map[string]interface{}{
+			"mv":  mv,
+			"key": key,
+		})
 		v, ok := mv.Elements()[key]
 		return v, ok
 	case basetypes.ObjectValue:
+		tflog.Debug(ctx, "Found object value", map[string]interface{}{
+			"mv":  mv,
+			"key": key,
+		})
 		v, ok := mv.Attributes()[key]
 		return v, ok
 	default:
+		tflog.Debug(ctx, "Found scalar value", map[string]interface{}{
+			"mv":   mv,
+			"type": fmt.Sprintf("%T", mv),
+			"key":  key,
+		})
 		return m, false
 	}
 }
@@ -143,10 +210,16 @@ func getStringFromValue(m attr.Value) string {
 	}
 }
 
-func getTerraformRef(resource, component, key, property string) string {
+func getTerraformRef(ctx context.Context, resourceMap map[string]attr.Value, component, key, property string) (string, error) {
+	rcValue, ok := resourceMap[component]
+	if !ok {
+		return "", fmt.Errorf("component %s not found in resource map", component)
+	}
+	resource, _ := getValueOrValueFromMap(ctx, rcValue, "resource")
+	instance, _ := getValueOrValueFromMap(ctx, rcValue, "instance")
 	partReferences := []string{}
 	for _, part := range strings.Split(property, ".") {
 		partReferences = append(partReferences, fmt.Sprintf("[\"%s\"]", part))
 	}
-	return fmt.Sprintf("${%s.%s%s%s}", resource, component, fmt.Sprintf("[\"%s\"]", key), strings.Join(partReferences, ""))
+	return fmt.Sprintf("${%s.%s%s%s}", getStringFromValue(resource), getStringFromValue(instance), fmt.Sprintf("[\"%s\"]", key), strings.Join(partReferences, "")), nil
 }
