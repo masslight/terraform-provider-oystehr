@@ -36,9 +36,10 @@ func (f *MergeVarAndRefFunction) Definition(_ context.Context, _ function.Defini
 		Summary:     "Merge variables and references into a template string",
 		Description: "Merge values into a template string from variables and references",
 		Parameters: []function.Parameter{
-			function.StringParameter{
-				Name:        "value",
-				Description: "The template string to merge values into. It can contain variables and references in the form of #{var/VAR_NAME} and #{ref/component/KEY/property.access.path}.",
+			function.DynamicParameter{
+				Name:           "value",
+				Description:    "The template string to merge values into. It can contain variables and references in the form of #{var/VAR_NAME} and #{ref/component/KEY/property.access.path}.",
+				AllowNullValue: true,
 			},
 			function.MapParameter{
 				Name:        "resource",
@@ -59,23 +60,32 @@ func (f *MergeVarAndRefFunction) Definition(_ context.Context, _ function.Defini
 				Description: "A dynamic object parameter that contains components and their properties. ",
 			},
 		},
-		Return: function.StringReturn{},
+		Return: function.DynamicReturn{},
 	}
 }
 
 func (f *MergeVarAndRefFunction) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
-	var value string
+	var valueParam basetypes.DynamicValue
 	var resourceMapParam basetypes.MapValue
 	var variables basetypes.DynamicValue
 	var spec basetypes.DynamicValue
 
-	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &value, &resourceMapParam, &variables, &spec))
+	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &valueParam, &resourceMapParam, &variables, &spec))
 	if resp.Error != nil {
 		return
 	}
 
-	if value == "" {
-		resp.Error = function.ConcatFuncErrors(resp.Error, resp.Result.Set(ctx, value))
+	if valueParam.IsNull() {
+		resp.Error = function.ConcatFuncErrors(resp.Error, resp.Result.Set(ctx, valueParam))
+		return
+	}
+
+	var value string
+	switch v := valueParam.UnderlyingValue().(type) {
+	case basetypes.StringValue:
+		value = v.ValueString()
+	default:
+		resp.Error = function.ConcatFuncErrors(resp.Error, resp.Result.Set(ctx, valueParam))
 		return
 	}
 
