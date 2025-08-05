@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -21,10 +22,11 @@ type FhirResourceIdentityModel struct {
 }
 
 type FhirResourceData struct {
-	ID   types.String `tfsdk:"id"`
-	Type types.String `tfsdk:"type"`
-	Data types.String `tfsdk:"data"`
-	Meta types.Object `tfsdk:"meta"`
+	ID            types.String `tfsdk:"id"`
+	Type          types.String `tfsdk:"type"`
+	Data          types.String `tfsdk:"data"`
+	Meta          types.Object `tfsdk:"meta"`
+	RemovalPolicy types.String `tfsdk:"removal_policy"`
 }
 
 func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirResourceData) (map[string]any, diag.Diagnostics) {
@@ -48,7 +50,7 @@ func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirReso
 	return data, nil
 }
 
-func convertRawResourceToFhirResource(ctx context.Context, rawResource map[string]any) (FhirResourceData, diag.Diagnostics) {
+func convertRawResourceToFhirResource(ctx context.Context, rawResource map[string]any, templ FhirResourceData) (FhirResourceData, diag.Diagnostics) {
 	id, ok := rawResource["id"].(string)
 	if !ok {
 		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
@@ -91,10 +93,11 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 		return FhirResourceData{}, diags
 	}
 	return FhirResourceData{
-		ID:   types.StringValue(id),
-		Type: types.StringValue(resourceType),
-		Data: types.StringValue(string(data)),
-		Meta: meta,
+		ID:            types.StringValue(id),
+		Type:          types.StringValue(resourceType),
+		Data:          types.StringValue(string(data)),
+		Meta:          meta,
+		RemovalPolicy: templ.RemovalPolicy,
 	}, nil
 }
 
@@ -144,6 +147,12 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					},
 				},
 			},
+			"removal_policy": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The removal policy for the FHIR resource. Valid values are 'delete' and 'retain'. Defaults to 'delete'.",
+				Default:     stringdefault.StaticString("delete"),
+			},
 		},
 	}
 }
@@ -183,8 +192,7 @@ func (r *FhirResource) Configure(_ context.Context, req resource.ConfigureReques
 func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan FhirResourceData
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -201,7 +209,7 @@ func (r *FhirResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	resource, diags := convertRawResourceToFhirResource(ctx, createdResource)
+	resource, diags := convertRawResourceToFhirResource(ctx, createdResource, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -218,8 +226,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	var state FhirResourceData
 	var identity FhirResourceIdentityModel
 
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if !req.Identity.Raw.IsNull() {
 		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
 	}
@@ -233,7 +240,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	resource, diags := convertRawResourceToFhirResource(ctx, returnedResource)
+	resource, diags := convertRawResourceToFhirResource(ctx, returnedResource, state)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -251,10 +258,8 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var plan FhirResourceData
 	var state FhirResourceData
 
-	diags := req.Plan.Get(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -271,28 +276,29 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	resource, diags := convertRawResourceToFhirResource(ctx, updatedResource)
+	resource, diags := convertRawResourceToFhirResource(ctx, updatedResource, plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.State.Set(ctx, resource)
+	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
 }
 
 func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state FhirResourceData
 
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	err := r.client.Fhir.DeleteResource(ctx, state.Type.ValueString(), state.ID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error Deleting FHIR Resource", err.Error())
-		return
+	if state.RemovalPolicy.ValueString() == "delete" {
+		err := r.client.Fhir.DeleteResource(ctx, state.Type.ValueString(), state.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Deleting FHIR Resource", err.Error())
+			return
+		}
 	}
 }
 

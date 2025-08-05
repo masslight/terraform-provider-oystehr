@@ -162,7 +162,8 @@ resource "oystehr_z3_bucket" "example" {
 
 # Import Z3 bucket using identity (requires Terraform 1.12+)
 resource "oystehr_z3_bucket" "example2" {
-  name = "f6f98331-4079-465d-84ec-ef0f3a839a77-school-work-note-templates"
+  name           = "f6f98331-4079-465d-84ec-ef0f3a839a77-school-work-note-templates"
+  removal_policy = "retain"
 }
 
 import {
