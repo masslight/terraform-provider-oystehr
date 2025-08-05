@@ -8,8 +8,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
@@ -18,8 +20,9 @@ type Z3BucketIdentityModel struct {
 }
 
 type Z3Bucket struct {
-	ID   types.String `tfsdk:"id"`
-	Name types.String `tfsdk:"name"`
+	ID            types.String `tfsdk:"id"`
+	Name          types.String `tfsdk:"name"`
+	RemovalPolicy types.String `tfsdk:"removal_policy"`
 }
 
 func convertZ3BucketToClientBucket(bucket Z3Bucket) client.Bucket {
@@ -29,10 +32,11 @@ func convertZ3BucketToClientBucket(bucket Z3Bucket) client.Bucket {
 	}
 }
 
-func convertClientBucketToZ3Bucket(clientBucket *client.Bucket) Z3Bucket {
+func convertClientBucketToZ3Bucket(clientBucket *client.Bucket, templ Z3Bucket) Z3Bucket {
 	return Z3Bucket{
-		ID:   stringPointerToTfString(clientBucket.ID),
-		Name: stringPointerToTfString(clientBucket.Name),
+		ID:            stringPointerToTfString(clientBucket.ID),
+		Name:          stringPointerToTfString(clientBucket.Name),
+		RemovalPolicy: templ.RemovalPolicy,
 	}
 }
 
@@ -66,6 +70,12 @@ func (r *Z3BucketResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+			},
+			"removal_policy": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The removal policy for the Z3 bucket. Valid values are 'delete' and 'retain'. Defaults to 'delete'.",
+				Default:     stringdefault.StaticString("delete"),
 			},
 		},
 	}
@@ -115,7 +125,7 @@ func (r *Z3BucketResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	retZ3Bucket := convertClientBucketToZ3Bucket(createdBucket)
+	retZ3Bucket := convertClientBucketToZ3Bucket(createdBucket, plan)
 	identity := Z3BucketIdentityModel{
 		Name: retZ3Bucket.Name,
 	}
@@ -143,7 +153,7 @@ func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	retZ3Bucket := convertClientBucketToZ3Bucket(clientBucket)
+	retZ3Bucket := convertClientBucketToZ3Bucket(clientBucket, state)
 	retIdentity := Z3BucketIdentityModel{
 		Name: retZ3Bucket.Name,
 	}
@@ -153,10 +163,31 @@ func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, r
 }
 
 func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	resp.Diagnostics.AddError(
-		"Update Not Supported",
-		"Updating Z3 buckets is not supported. Please recreate the resource with the new configuration.",
-	)
+	var state Z3Bucket
+	var plan Z3Bucket
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if state.Name.ValueString() != plan.Name.ValueString() {
+		resp.Diagnostics.AddError(
+			"Name Change Not Allowed",
+			"The name of a Z3 bucket cannot be changed after creation. Please create a new bucket with the desired name.",
+		)
+		return
+	}
+	retZ3Bucket := Z3Bucket{
+		ID:            state.ID,
+		Name:          state.Name,
+		RemovalPolicy: plan.RemovalPolicy,
+	}
+	tflog.Info(ctx, "Updating Z3 bucket", map[string]interface{}{
+		"id":             retZ3Bucket.ID.ValueString(),
+		"name":           retZ3Bucket.Name.ValueString(),
+		"removal_policy": retZ3Bucket.RemovalPolicy.ValueString(),
+	})
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
 }
 
 func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -167,10 +198,12 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	err := r.client.Z3.DeleteBucket(ctx, state.Name.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
-		return
+	if state.RemovalPolicy.ValueString() == "delete" {
+		err := r.client.Z3.DeleteBucket(ctx, state.Name.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
+			return
+		}
 	}
 }
 
