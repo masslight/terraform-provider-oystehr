@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -11,7 +12,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -27,6 +31,7 @@ type FhirResourceData struct {
 	Data          types.String `tfsdk:"data"`
 	Meta          types.Object `tfsdk:"meta"`
 	RemovalPolicy types.String `tfsdk:"removal_policy"`
+	ManagedFields types.Set    `tfsdk:"managed_fields"`
 }
 
 func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirResourceData) (map[string]any, diag.Diagnostics) {
@@ -98,12 +103,37 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 		Data:          types.StringValue(string(data)),
 		Meta:          meta,
 		RemovalPolicy: templ.RemovalPolicy,
+		ManagedFields: templ.ManagedFields,
 	}, nil
+}
+
+func mergeJSONStrings(base, update string, managedFields []string) (string, error) {
+	var baseMap, updateMap map[string]any
+	if err := json.Unmarshal([]byte(base), &baseMap); err != nil {
+		return "", err
+	}
+	if err := json.Unmarshal([]byte(update), &updateMap); err != nil {
+		return "", err
+	}
+
+	for k, v := range updateMap {
+		// No managed fields specified, or the field is in the managed fields list
+		if len(managedFields) == 0 || slices.Contains(managedFields, k) {
+			baseMap[k] = v
+		}
+	}
+
+	result, err := json.Marshal(baseMap)
+	if err != nil {
+		return "", err
+	}
+	return string(result), nil
 }
 
 var _ resource.Resource = &FhirResource{}
 var _ resource.ResourceWithConfigure = &FhirResource{}
 var _ resource.ResourceWithIdentity = &FhirResource{}
+var _ resource.ResourceWithModifyPlan = &FhirResource{}
 var _ resource.ResourceWithImportState = &FhirResource{}
 
 type FhirResource struct {
@@ -128,6 +158,9 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"type": schema.StringAttribute{
 				Required:    true,
 				Description: "The FHIR resource type (e.g., Patient, Observation).",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"data": schema.StringAttribute{
 				Required:    true,
@@ -152,6 +185,15 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Computed:    true,
 				Description: "The removal policy for the FHIR resource. Valid values are 'delete' and 'retain'. Defaults to 'delete'.",
 				Default:     stringdefault.StaticString("delete"),
+			},
+			"managed_fields": schema.SetAttribute{
+				ElementType: types.StringType,
+				Optional:    true,
+				Computed:    true,
+				Description: "A set of fields to be managed by the provider. This is used to restrict updates to only the specified fields. Defaults to an empty set, which means all fields are managed.",
+				Default: setdefault.StaticValue(
+					types.SetValueMust(types.StringType, []attr.Value{}),
+				),
 			},
 		},
 	}
@@ -276,16 +318,22 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		versionID = getStringFromValue(versionIDValue)
 	}
 
-	updatedResource, err := r.client.Fhir.UpdateResource(ctx, state.Type.ValueString(), state.ID.ValueString(), versionID, resourceData)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Updating FHIR Resource", err.Error())
-		return
-	}
+	var resource FhirResourceData
+	if !plan.Data.Equal(state.Data) {
+		updatedResource, err := r.client.Fhir.UpdateResource(ctx, state.Type.ValueString(), state.ID.ValueString(), versionID, resourceData)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Updating FHIR Resource", err.Error())
+			return
+		}
 
-	resource, diags := convertRawResourceToFhirResource(ctx, updatedResource, plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+		convertedResource, diags := convertRawResourceToFhirResource(ctx, updatedResource, plan)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		resource = convertedResource
+	} else {
+		resource = plan
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
@@ -306,6 +354,52 @@ func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 			return
 		}
 	}
+}
+
+func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		// If the plan is null, we cannot modify it, so we return early.
+		resp.Plan = req.Plan
+		return
+	}
+
+	if req.State.Raw.IsNull() {
+		// If the state is null, there's nothing to check against, so we return early.
+		resp.Plan = req.Plan
+		return
+	}
+
+	var plan FhirResourceData
+	var state FhirResourceData
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// ID never changes once set
+	plan.ID = state.ID
+
+	if !plan.Data.Equal(state.Data) {
+		var managedFields []string
+		resp.Diagnostics.Append(plan.ManagedFields.ElementsAs(ctx, &managedFields, true)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		mergedData, err := mergeJSONStrings(state.Data.ValueString(), plan.Data.ValueString(), managedFields)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Merging FHIR Resource Data", err.Error())
+			return
+		}
+		dataChanged := mergedData != state.Data.ValueString()
+		plan.Data = types.StringValue(mergedData)
+		if !dataChanged {
+			plan.Meta = state.Meta
+		}
+	} else {
+		plan.Meta = state.Meta
+	}
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
 func (r *FhirResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
