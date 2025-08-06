@@ -56,6 +56,7 @@ func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirReso
 }
 
 func convertRawResourceToFhirResource(ctx context.Context, rawResource map[string]any, templ FhirResourceData) (FhirResourceData, diag.Diagnostics) {
+	// Extract ID and resourceType from rawResource
 	id, ok := rawResource["id"].(string)
 	if !ok {
 		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
@@ -72,6 +73,8 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 		)}
 	}
 	delete(rawResource, "resourceType")
+
+	// Extract computed meta fields
 	rawMeta, ok := rawResource["meta"].(map[string]any)
 	if !ok {
 		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
@@ -79,15 +82,7 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 			"Expected a map for the meta field.",
 		)}
 	}
-	delete(rawResource, "meta")
-	data, err := json.Marshal(rawResource)
-	if err != nil {
-		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Failed to marshal FHIR resource data",
-			"Expected a valid JSON object for the FHIR resource data.",
-		)}
-	}
-	meta, diags := types.ObjectValue(map[string]attr.Type{
+	computedMeta, diags := types.ObjectValue(map[string]attr.Type{
 		"last_updated": types.StringType,
 		"version_id":   types.StringType,
 	}, map[string]attr.Value{
@@ -97,11 +92,26 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 	if diags.HasError() {
 		return FhirResourceData{}, diags
 	}
+	// Remove computed fields from rawResource
+	delete(rawMeta, "lastUpdated")
+	delete(rawMeta, "versionId")
+	if len(rawMeta) == 0 {
+		delete(rawResource, "meta")
+	} else {
+		rawResource["meta"] = rawMeta
+	}
+	data, err := json.Marshal(rawResource)
+	if err != nil {
+		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
+			"Failed to marshal FHIR resource data",
+			"Expected a valid JSON object for the FHIR resource data.",
+		)}
+	}
 	return FhirResourceData{
 		ID:            types.StringValue(id),
 		Type:          types.StringValue(resourceType),
 		Data:          types.StringValue(string(data)),
-		Meta:          meta,
+		Meta:          computedMeta,
 		RemovalPolicy: templ.RemovalPolicy,
 		ManagedFields: templ.ManagedFields,
 	}, nil
