@@ -39,7 +39,7 @@ func (c *fhirClient) CreateResource(ctx context.Context, resourceType string, da
 	return result, nil
 }
 
-func (c *fhirClient) UpdateResource(ctx context.Context, resourceType, resourceID string, data map[string]interface{}) (map[string]interface{}, error) {
+func (c *fhirClient) UpdateResource(ctx context.Context, resourceType, resourceID string, versionID string, data map[string]interface{}) (map[string]interface{}, error) {
 	url := fmt.Sprintf("https://fhir-api.zapehr.com/%s/%s", resourceType, resourceID)
 
 	if data["resourceType"] == nil {
@@ -53,7 +53,12 @@ func (c *fhirClient) UpdateResource(ctx context.Context, resourceType, resourceI
 		return nil, fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	responseBody, err := request(ctx, c.config, http.MethodPut, url, jsonData)
+	headers := map[string]string{}
+	if versionID != "" {
+		headers["If-Match"] = fmt.Sprintf(`W/"%s"`, versionID)
+	}
+
+	responseBody, err := requestWithHeaders(ctx, c.config, http.MethodPut, url, jsonData, headers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update resource: %w", err)
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
@@ -182,11 +181,6 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 		Name:          state.Name,
 		RemovalPolicy: plan.RemovalPolicy,
 	}
-	tflog.Info(ctx, "Updating Z3 bucket", map[string]interface{}{
-		"id":             retZ3Bucket.ID.ValueString(),
-		"name":           retZ3Bucket.Name.ValueString(),
-		"removal_policy": retZ3Bucket.RemovalPolicy.ValueString(),
-	})
 	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
 }
 
