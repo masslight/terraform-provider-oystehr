@@ -127,6 +127,7 @@ resource "oystehr_fhir_resource" "example" {
       }
     ]
   })
+  managed_fields = ["maritalStatus", "link", "name"]
 }
 
 # Import Patient FHIR resource using identity (requires Terraform 1.12+)
@@ -153,6 +154,30 @@ import {
   to = oystehr_fhir_resource.example3
   # Use `ResourceType/ResourceId` format to import FHIR resources by ID
   id = "Patient/7f2c28f8-cfb8-4002-8544-e80dd58d8a61"
+}
+
+resource "oystehr_fhir_resource" "example4" {
+  type = "Patient"
+  data = jsonencode({
+    active = true
+    name = [
+      {
+        use    = "official"
+        family = "Doe"
+        given  = ["Janey"]
+      }
+    ]
+    meta = {
+      tag = [
+        {
+          system  = "http://example.com/fhir/tag"
+          code    = "example-"
+          display = "Example Tag"
+        }
+      ]
+    }
+  })
+  managed_fields = ["name", "meta"]
 }
 
 # Create a Z3 bucket
