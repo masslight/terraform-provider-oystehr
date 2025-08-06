@@ -196,30 +196,6 @@ func getValueOrValueFromMap(ctx context.Context, m attr.Value, key string) (attr
 	}
 }
 
-func getStringFromValue(m attr.Value) string {
-	if m == nil {
-		return ""
-	}
-	switch mv := m.(type) {
-	case basetypes.StringValue:
-		return mv.ValueString()
-	case basetypes.BoolValue:
-		return fmt.Sprintf("%t", mv.ValueBool())
-	case basetypes.Int64Value:
-		return fmt.Sprintf("%d", mv.ValueInt64())
-	case basetypes.Float64Value:
-		return fmt.Sprintf("%f", mv.ValueFloat64())
-	case basetypes.Int32Value:
-		return fmt.Sprintf("%d", mv.ValueInt32())
-	case basetypes.Float32Value:
-		return fmt.Sprintf("%f", mv.ValueFloat32())
-	case basetypes.NumberValue:
-		return mv.ValueBigFloat().String()
-	default:
-		return ""
-	}
-}
-
 func getTerraformRef(ctx context.Context, resourceMap map[string]attr.Value, component, key, property string) (string, error) {
 	rcValue, ok := resourceMap[component]
 	if !ok {

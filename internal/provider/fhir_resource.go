@@ -270,7 +270,13 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	updatedResource, err := r.client.Fhir.UpdateResource(ctx, state.Type.ValueString(), state.ID.ValueString(), resourceData)
+	var versionID string
+	versionIDValue, ok := state.Meta.Attributes()["version_id"]
+	if ok && !versionIDValue.IsNull() {
+		versionID = getStringFromValue(versionIDValue)
+	}
+
+	updatedResource, err := r.client.Fhir.UpdateResource(ctx, state.Type.ValueString(), state.ID.ValueString(), versionID, resourceData)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating FHIR Resource", err.Error())
 		return

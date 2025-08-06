@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -139,4 +140,28 @@ func convertAccessPolicyToClientAccessPolicy(ctx context.Context, accessPolicy t
 		clientAccessPolicy.Rule = make([]client.Rule, 0)
 	}
 	return &clientAccessPolicy
+}
+
+func getStringFromValue(m attr.Value) string {
+	if m == nil {
+		return ""
+	}
+	switch mv := m.(type) {
+	case basetypes.StringValue:
+		return mv.ValueString()
+	case basetypes.BoolValue:
+		return fmt.Sprintf("%t", mv.ValueBool())
+	case basetypes.Int64Value:
+		return fmt.Sprintf("%d", mv.ValueInt64())
+	case basetypes.Float64Value:
+		return fmt.Sprintf("%f", mv.ValueFloat64())
+	case basetypes.Int32Value:
+		return fmt.Sprintf("%d", mv.ValueInt32())
+	case basetypes.Float32Value:
+		return fmt.Sprintf("%f", mv.ValueFloat32())
+	case basetypes.NumberValue:
+		return mv.ValueBigFloat().String()
+	default:
+		return ""
+	}
 }
