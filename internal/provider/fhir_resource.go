@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -40,7 +41,7 @@ func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirReso
 	if err != nil {
 		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
 			"Failed to unmarshal FHIR resource data",
-			"Expected a valid JSON string for the FHIR resource data.",
+			fmt.Sprintf("Expected a valid JSON string for the FHIR resource data. Resource: %+v", resourceData),
 		)}
 	}
 	if data == nil {
@@ -373,15 +374,35 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		return
 	}
 
+	var plan FhirResourceData
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Remove resourceType and ID
+	var data map[string]any
+	err := json.Unmarshal([]byte(plan.Data.ValueString()), &data)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Unmarshalling FHIR Resource Data", err.Error())
+		return
+	}
+	delete(data, "resourceType")
+	delete(data, "id")
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Marshalling FHIR Resource Data", err.Error())
+		return
+	}
+	plan.Data = types.StringValue(string(dataBytes))
+
 	if req.State.Raw.IsNull() {
-		// If the state is null, there's nothing to check against, so we return early.
+		// If the state is null, there's nothing more to check against, so we return early.
 		resp.Plan = req.Plan
 		return
 	}
 
-	var plan FhirResourceData
 	var state FhirResourceData
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -390,6 +411,7 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	// ID never changes once set
 	plan.ID = state.ID
 
+	// Handle `managed_fields` and merging of `data`
 	if !plan.Data.Equal(state.Data) {
 		var managedFields []string
 		resp.Diagnostics.Append(plan.ManagedFields.ElementsAs(ctx, &managedFields, true)...)
