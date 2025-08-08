@@ -19,6 +19,10 @@ description: |-
 
 - `name` (String) The name of the Z3 bucket.
 
+### Optional
+
+- `removal_policy` (String) The removal policy for the Z3 bucket. Valid values are 'delete' and 'retain'. Defaults to 'delete'.
+
 ### Read-Only
 
 - `id` (String) The ID of the Z3 bucket.

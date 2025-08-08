@@ -20,6 +20,11 @@ description: |-
 - `data` (String) The FHIR resource data in JSON format.
 - `type` (String) The FHIR resource type (e.g., Patient, Observation).
 
+### Optional
+
+- `managed_fields` (Set of String) A set of fields to be managed by the provider. This is used to restrict updates to only the specified fields. Defaults to an empty set, which means all fields are managed.
+- `removal_policy` (String) The removal policy for the FHIR resource. Valid values are 'delete' and 'retain'. Defaults to 'delete'.
+
 ### Read-Only
 
 - `id` (String) The ID of the FHIR resource.
