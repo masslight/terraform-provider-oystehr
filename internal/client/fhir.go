@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	fhirBaseURL = "https://fhir-api.zapehr.com"
+	fhirBaseURL  = "https://fhir-api.zapehr.com"
+	maxBatchSize = 100 // Maximum number of entries to process in a single batch
 )
 
 type entryResult struct {
@@ -51,8 +52,18 @@ func (c *fhirClient) processBundleEntries(ctx context.Context) error {
 	c.processMutex.Lock()
 	defer c.processMutex.Unlock()
 	c.entryMutex.Lock()
-	entries := slices.Clone(c.entries)
-	c.entries = []bundleEntry{}
+	var entries []bundleEntry
+	if len(c.entries) > 0 {
+		if len(c.entries) <= maxBatchSize {
+			// If the number of entries is less than or equal to maxBatchSize, process all of them
+			entries = slices.Clone(c.entries)
+			c.entries = []bundleEntry{}
+		} else {
+			// If there are more entries than maxBatchSize, process only the first maxBatchSize entries
+			entries = slices.Clone(c.entries[:maxBatchSize])
+			c.entries = c.entries[maxBatchSize:]
+		}
+	}
 	c.entryMutex.Unlock()
 
 	if len(entries) == 0 {
