@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -23,7 +22,6 @@ type OystehrProviderModel struct {
 }
 
 var _ provider.Provider = &OystehrProvider{}
-var _ provider.ProviderWithFunctions = &OystehrProvider{}
 
 type OystehrProvider struct {
 	version string
@@ -104,12 +102,6 @@ func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewZ3BucketResource,
 		NewZ3ObjectResource,
 		NewZambdaResource,
-	}
-}
-
-func (o *OystehrProvider) Functions(_ context.Context) []func() function.Function {
-	return []func() function.Function{
-		NewMergeVarAndRefFunction,
 	}
 }
 
