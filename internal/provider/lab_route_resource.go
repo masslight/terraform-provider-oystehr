@@ -192,7 +192,8 @@ func (r *LabRouteResource) Delete(ctx context.Context, req resource.DeleteReques
 		routeID = state.ID.ValueString()
 	}
 
-	err := r.client.Lab.DeleteLabRoute(ctx, routeID)
+	labRoute := convertLabRouteToClientLabRoute(ctx, state)
+	err := r.client.Lab.DeleteLabRoute(ctx, routeID, &labRoute)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Deleting Lab Route", err.Error())
 		return
