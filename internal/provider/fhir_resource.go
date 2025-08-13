@@ -2,8 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
 
@@ -27,22 +26,26 @@ type FhirResourceIdentityModel struct {
 }
 
 type FhirResourceData struct {
-	ID            types.String `tfsdk:"id"`
-	Type          types.String `tfsdk:"type"`
-	Data          types.String `tfsdk:"data"`
-	Meta          types.Object `tfsdk:"meta"`
-	RemovalPolicy types.String `tfsdk:"removal_policy"`
-	ManagedFields types.Set    `tfsdk:"managed_fields"`
+	ID            types.String  `tfsdk:"id"`
+	Type          types.String  `tfsdk:"type"`
+	Data          types.Dynamic `tfsdk:"data"`
+	Meta          types.Object  `tfsdk:"meta"`
+	RemovalPolicy types.String  `tfsdk:"removal_policy"`
+	ManagedFields types.Set     `tfsdk:"managed_fields"`
 }
 
 func convertFhirResourceToRawResource(ctx context.Context, resourceData FhirResourceData) (map[string]any, diag.Diagnostics) {
 	var data map[string]any
-	err := json.Unmarshal([]byte(resourceData.Data.ValueString()), &data)
-	if err != nil {
+	dataOV, ok := resourceData.Data.UnderlyingValue().(basetypes.ObjectValue)
+	if !ok {
 		return nil, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Failed to unmarshal FHIR resource data",
-			fmt.Sprintf("Expected a valid JSON string for the FHIR resource data. Resource: %+v", resourceData),
+			"Invalid Data Type",
+			"Expected a valid TF map for the FHIR resource data.",
 		)}
+	}
+	data, diags := terraformObjectToMap(ctx, dataOV)
+	if diags.HasError() {
+		return nil, diags
 	}
 	if data == nil {
 		data = make(map[string]any)
@@ -101,44 +104,35 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 	} else {
 		rawResource["meta"] = rawMeta
 	}
-	data, err := json.Marshal(rawResource)
-	if err != nil {
-		return FhirResourceData{}, diag.Diagnostics{diag.NewErrorDiagnostic(
-			"Failed to marshal FHIR resource data",
-			"Expected a valid JSON object for the FHIR resource data.",
-		)}
+	mv, diags := mapToTerraformObject(ctx, rawResource)
+	if diags.HasError() {
+		return FhirResourceData{}, diags
 	}
 	return FhirResourceData{
 		ID:            types.StringValue(id),
 		Type:          types.StringValue(resourceType),
-		Data:          types.StringValue(string(data)),
+		Data:          types.DynamicValue(mv),
 		Meta:          computedMeta,
 		RemovalPolicy: templ.RemovalPolicy,
 		ManagedFields: templ.ManagedFields,
 	}, nil
 }
 
-func mergeJSONStrings(base, update string, managedFields []string) (string, error) {
-	var baseMap, updateMap map[string]any
-	if err := json.Unmarshal([]byte(base), &baseMap); err != nil {
-		return "", err
-	}
-	if err := json.Unmarshal([]byte(update), &updateMap); err != nil {
-		return "", err
-	}
+func mergeTFObjects(ctx context.Context, base, update types.Object, managedFields []string) (types.Object, diag.Diagnostics) {
+	baseMap := base.Attributes()
+	baseAttributeTypes := base.AttributeTypes(ctx)
+	updateMap := update.Attributes()
+	updateAttributeTypes := update.AttributeTypes(ctx)
 
 	for k, v := range updateMap {
 		// No managed fields specified, or the field is in the managed fields list
 		if len(managedFields) == 0 || slices.Contains(managedFields, k) {
 			baseMap[k] = v
+			baseAttributeTypes[k] = updateAttributeTypes[k]
 		}
 	}
 
-	result, err := json.Marshal(baseMap)
-	if err != nil {
-		return "", err
-	}
-	return string(result), nil
+	return types.ObjectValue(baseAttributeTypes, baseMap)
 }
 
 var _ resource.Resource = &FhirResource{}
@@ -173,9 +167,9 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"data": schema.StringAttribute{
+			"data": schema.DynamicAttribute{
 				Required:    true,
-				Description: "The FHIR resource data in JSON format.",
+				Description: "The FHIR resource data as a terraform object.",
 			},
 			"meta": schema.SingleNestedAttribute{
 				Computed:    true,
@@ -394,11 +388,10 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		resp.Diagnostics.AddError("Error Marshalling FHIR Resource Data", err.Error())
 		return
 	}
-	plan.Data = types.StringValue(string(dataBytes))
 
 	if req.State.Raw.IsNull() {
 		// If the state is null, there's nothing more to check against, so we return early.
-		resp.Plan = req.Plan
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 		return
 	}
 
@@ -418,13 +411,13 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		mergedData, err := mergeJSONStrings(state.Data.ValueString(), plan.Data.ValueString(), managedFields)
-		if err != nil {
-			resp.Diagnostics.AddError("Error Merging FHIR Resource Data", err.Error())
+		mergedData, diags := mergeTFObjects(ctx, state.Data.UnderlyingValue().(types.Object), plan.Data.UnderlyingValue().(types.Object), managedFields)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
-		dataChanged := mergedData != state.Data.ValueString()
-		plan.Data = types.StringValue(mergedData)
+		dataChanged := !mergedData.Equal(state.Data)
+		plan.Data = types.DynamicValue(mergedData)
 		if !dataChanged {
 			plan.Meta = state.Meta
 		}
