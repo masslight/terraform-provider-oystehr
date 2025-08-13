@@ -17,10 +17,10 @@ type Secret struct {
 }
 
 type secretClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newSecretClient(config ClientConfig) *secretClient {
+func newSecretClient(config *ClientConfig) *secretClient {
 	return &secretClient{config}
 }
 

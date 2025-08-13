@@ -30,10 +30,10 @@ type Application struct {
 }
 
 type applicationClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newApplicationClient(config ClientConfig) *applicationClient {
+func newApplicationClient(config *ClientConfig) *applicationClient {
 	return &applicationClient{
 		config,
 	}

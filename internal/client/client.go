@@ -8,7 +8,7 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	config      ClientConfig
+	config      *ClientConfig
 	Application *applicationClient
 	Fhir        *fhirClient
 	Lab         *labClient
@@ -23,7 +23,7 @@ func (c *Client) Request() {
 
 }
 
-func New(config ClientConfig) *Client {
+func New(config *ClientConfig) *Client {
 	return &Client{
 		config:      config,
 		Application: newApplicationClient(config),

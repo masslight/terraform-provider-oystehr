@@ -8,11 +8,11 @@ import (
 	"net/http"
 )
 
-func request(ctx context.Context, config ClientConfig, method, url string, body []byte) ([]byte, error) {
+func request(ctx context.Context, config *ClientConfig, method, url string, body []byte) ([]byte, error) {
 	return requestWithHeaders(ctx, config, method, url, body, nil)
 }
 
-func requestWithHeaders(ctx context.Context, config ClientConfig, method, url string, body []byte, headers map[string]string) ([]byte, error) {
+func requestWithHeaders(ctx context.Context, config *ClientConfig, method, url string, body []byte, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

@@ -24,10 +24,10 @@ const (
 )
 
 type z3Client struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newZ3Client(config ClientConfig) *z3Client {
+func newZ3Client(config *ClientConfig) *z3Client {
 	return &z3Client{config}
 }
 

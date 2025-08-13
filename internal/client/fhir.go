@@ -32,12 +32,12 @@ type bundleEntry struct {
 }
 
 type fhirClient struct {
-	config     ClientConfig
+	config     *ClientConfig
 	entries    []bundleEntry
 	entryMutex *sync.Mutex
 }
 
-func newFhirClient(config ClientConfig) *fhirClient {
+func newFhirClient(config *ClientConfig) *fhirClient {
 	c := &fhirClient{config, []bundleEntry{}, &sync.Mutex{}}
 	go c.processBundleEntries()
 	return c

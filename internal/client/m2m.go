@@ -65,10 +65,10 @@ func m2mOutputToM2M(m2mOutput *M2MOutput) *M2M {
 }
 
 type m2mClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newM2MClient(config ClientConfig) *m2mClient {
+func newM2MClient(config *ClientConfig) *m2mClient {
 	return &m2mClient{config}
 }
 

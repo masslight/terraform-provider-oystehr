@@ -22,10 +22,10 @@ type CreateLabRouteOutput struct {
 }
 
 type labClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newLabClient(config ClientConfig) *labClient {
+func newLabClient(config *ClientConfig) *labClient {
 	return &labClient{config}
 }
 

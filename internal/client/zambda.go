@@ -76,10 +76,10 @@ const (
 )
 
 type zambdaClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newZambdaClient(config ClientConfig) *zambdaClient {
+func newZambdaClient(config *ClientConfig) *zambdaClient {
 	return &zambdaClient{config}
 }
 
