@@ -76,7 +76,6 @@ func convertRawResourceToFhirResource(ctx context.Context, rawResource map[strin
 			"Expected a string for the resourceType field.",
 		)}
 	}
-	delete(rawResource, "resourceType")
 
 	// Extract computed meta fields
 	rawMeta, ok := rawResource["meta"].(map[string]any)
@@ -374,18 +373,9 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		return
 	}
 
-	// Remove resourceType and ID
-	var data map[string]any
-	err := json.Unmarshal([]byte(plan.Data.ValueString()), &data)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Unmarshalling FHIR Resource Data", err.Error())
-		return
-	}
-	delete(data, "resourceType")
-	delete(data, "id")
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Marshalling FHIR Resource Data", err.Error())
+	if plan.Data.IsUnknown() {
+		// If the data is unknown, we cannot modify it, so we return early.
+		resp.Plan = req.Plan
 		return
 	}
 
