@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -55,7 +56,10 @@ func (c *fhirClient) processBundleEntries() {
 		c.entryMutex.Lock()
 		var entries []bundleEntry
 		if len(c.entries) > 0 {
-			if len(c.entries) <= maxBatchSize {
+			if maxBatchSize <= 0 {
+				entries = slices.Clone(c.entries)
+				c.entries = []bundleEntry{}
+			} else if len(c.entries) <= maxBatchSize {
 				// If the number of entries is less than or equal to maxBatchSize, process all of them
 				entries = slices.Clone(c.entries)
 				c.entries = []bundleEntry{}
@@ -107,7 +111,9 @@ func (c *fhirClient) processBundleEntries() {
 		}
 
 		// Send bundle request
-		responseBody, err := request(ctx, c.config, http.MethodPost, fhirBaseURL, bundleJSON)
+		requestCtx, cancel := context.WithTimeout(ctx, time.Second*30)
+		responseBody, err := request(requestCtx, c.config, http.MethodPost, fhirBaseURL, bundleJSON)
+		cancel()
 		if err != nil {
 			sendErrorToAllEntries(ctx, entries, fmt.Errorf("failed to send bundle request: %w", err))
 			continue
