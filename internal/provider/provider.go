@@ -77,7 +77,7 @@ func (o *OystehrProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	client := client.New(client.ClientConfig{
+	client := client.New(&client.ClientConfig{
 		ProjectID:    data.ProjectID.ValueStringPointer(),
 		AccessToken:  data.AccessToken.ValueStringPointer(),
 		ClientID:     data.ClientID.ValueStringPointer(),

@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-func getAccessToken(ctx context.Context, config ClientConfig) (string, error) {
+func getAccessToken(ctx context.Context, config *ClientConfig) (string, error) {
 	if config.AccessToken != nil {
 		return *config.AccessToken, nil
 	}

@@ -34,10 +34,10 @@ type Role struct {
 }
 
 type roleClient struct {
-	config ClientConfig
+	config *ClientConfig
 }
 
-func newRoleClient(config ClientConfig) *roleClient {
+func newRoleClient(config *ClientConfig) *roleClient {
 	return &roleClient{config}
 }
 
