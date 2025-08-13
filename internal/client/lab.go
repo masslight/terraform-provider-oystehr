@@ -79,10 +79,15 @@ func (c *labClient) GetLabRoute(ctx context.Context, routeGUID string) (*LabRout
 	return nil, fmt.Errorf("LabRoute not found")
 }
 
-func (c *labClient) DeleteLabRoute(ctx context.Context, routeGUID string) error {
+func (c *labClient) DeleteLabRoute(ctx context.Context, routeGUID string, labRoute *LabRoute) error {
 	url := fmt.Sprintf("%s/route/%s", labBaseURL, routeGUID)
 
-	_, err := request(ctx, c.config, http.MethodDelete, url, nil)
+	body, err := json.Marshal(labRoute)
+	if err != nil {
+		return fmt.Errorf("failed to marshal LabRoute: %w", err)
+	}
+
+	_, err = request(ctx, c.config, http.MethodDelete, url, body)
 	if err != nil {
 		return fmt.Errorf("failed to delete LabRoute: %w", err)
 	}
