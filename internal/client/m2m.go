@@ -139,3 +139,21 @@ func (c *m2mClient) DeleteM2M(ctx context.Context, id string) error {
 
 	return nil
 }
+
+func (c *m2mClient) RotateM2MSecret(ctx context.Context, id string) (*string, error) {
+	url := fmt.Sprintf("%s/%s/rotate-secret", m2mBaseURL, id)
+
+	responseBody, err := request(ctx, c.config, http.MethodPost, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to rotate M2M secret: %w", err)
+	}
+
+	var resp struct {
+		Secret string `json:"secret"`
+	}
+	if err := json.Unmarshal(responseBody, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &resp.Secret, nil
+}
