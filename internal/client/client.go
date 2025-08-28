@@ -13,6 +13,7 @@ type Client struct {
 	Fhir        *fhirClient
 	Lab         *labClient
 	M2M         *m2mClient
+	Project     *projectClient
 	Role        *roleClient
 	Secret      *secretClient
 	Z3          *z3Client
@@ -30,6 +31,7 @@ func New(config *ClientConfig) *Client {
 		Fhir:        newFhirClient(config),
 		Lab:         newLabClient(config),
 		M2M:         newM2MClient(config),
+		Project:     newProjectClient(config),
 		Role:        newRoleClient(config),
 		Secret:      newSecretClient(config),
 		Z3:          newZ3Client(config),
