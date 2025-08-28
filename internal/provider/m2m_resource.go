@@ -16,6 +16,7 @@ import (
 type M2M struct {
 	ID           types.String `tfsdk:"id"`
 	ClientID     types.String `tfsdk:"client_id"`
+	ClientSecret types.String `tfsdk:"client_secret"`
 	Profile      types.String `tfsdk:"profile"`
 	Name         types.String `tfsdk:"name"`
 	Description  types.String `tfsdk:"description"`
@@ -37,10 +38,11 @@ func convertM2MToClientM2M(ctx context.Context, m2m M2M) client.M2M {
 	}
 }
 
-func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M) M2M {
+func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M, clientSecret *string) M2M {
 	return M2M{
 		ID:           stringPointerToTfString(clientM2M.ID),
 		ClientID:     stringPointerToTfString(clientM2M.ClientID),
+		ClientSecret: types.StringPointerValue(clientSecret),
 		Profile:      stringPointerToTfString(clientM2M.Profile),
 		Name:         stringPointerToTfString(clientM2M.Name),
 		Description:  stringPointerToTfString(clientM2M.Description),
@@ -85,6 +87,12 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"description": schema.StringAttribute{
 				Optional:    true,
 				Description: "A description of the M2M resource.",
+			},
+			"client_secret": schema.StringAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "The client secret of the M2M resource. This is only set on creation and when rotated through the API.",
+				Sensitive:   true,
 			},
 			"access_policy": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -157,7 +165,13 @@ func (r *M2MResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, createdM2M)
+	clientSecret, err := r.client.M2M.RotateM2MSecret(ctx, *createdM2M.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Rotating M2M Secret", err.Error())
+		return
+	}
+
+	retM2M := convertClientM2MToM2M(ctx, createdM2M, clientSecret)
 	identity := IDIdentityModel{
 		ID: retM2M.ID,
 	}
@@ -191,7 +205,7 @@ func (r *M2MResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, m2m)
+	retM2M := convertClientM2MToM2M(ctx, m2m, state.ClientSecret.ValueStringPointer())
 	retIdentity := IDIdentityModel{
 		ID: retM2M.ID,
 	}
@@ -220,7 +234,7 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, updatedM2M)
+	retM2M := convertClientM2MToM2M(ctx, updatedM2M, state.ClientSecret.ValueStringPointer())
 
 	resp.State.Set(ctx, retM2M)
 }
