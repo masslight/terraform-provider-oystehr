@@ -17,6 +17,7 @@ type Application struct {
 	ID                     types.String `tfsdk:"id"`
 	Name                   types.String `tfsdk:"name"`
 	ClientID               types.String `tfsdk:"client_id"`
+	ConnectionName         types.String `tfsdk:"connection_name"`
 	Description            types.String `tfsdk:"description"`
 	LoginRedirectURI       types.String `tfsdk:"login_redirect_uri"`
 	LoginWithEmailEnabled  types.Bool   `tfsdk:"login_with_email_enabled"`
@@ -36,6 +37,7 @@ func clientAppToApplication(ctx context.Context, app *client.Application) Applic
 		ID:                     stringPointerToTfString(app.ID),
 		Name:                   stringPointerToTfString(app.Name),
 		ClientID:               stringPointerToTfString(app.ClientID),
+		ConnectionName:         stringPointerToTfString(app.ConnectionName),
 		Description:            stringPointerToTfString(app.Description),
 		LoginRedirectURI:       stringPointerToTfString(app.LoginRedirectURI),
 		LoginWithEmailEnabled:  boolPointerToTfBool(app.LoginWithEmailEnabled),
@@ -105,6 +107,10 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"client_id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The client ID of the application.",
+			},
+			"connection_name": schema.StringAttribute{
+				Computed:    true,
+				Description: "The connection name of the application, for use by frontend components.",
 			},
 			"description": schema.StringAttribute{
 				Optional:    true,

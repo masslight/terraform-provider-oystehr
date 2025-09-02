@@ -15,6 +15,7 @@ type Application struct {
 	ID                     *string  `json:"id,omitempty"`
 	Name                   *string  `json:"name"`
 	ClientID               *string  `json:"clientId,omitempty"`
+	ConnectionName         *string  `json:"connectionName,omitempty"`
 	Description            *string  `json:"description,omitempty"`
 	LoginRedirectURI       *string  `json:"loginRedirectUri,omitempty"`
 	LoginWithEmailEnabled  *bool    `json:"loginWithEmailEnabled,omitempty"`
