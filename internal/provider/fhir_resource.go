@@ -123,6 +123,18 @@ func mergeTFObjects(ctx context.Context, base, update types.Object, managedField
 	updateMap := update.Attributes()
 	updateAttributeTypes := update.AttributeTypes(ctx)
 
+	// Start with base map. This is the current state of the object.
+
+	// First iterate through old attrs, removing any dropped managed fields
+	for k := range baseMap {
+		// Field removed in update
+		if _, ok := updateMap[k]; !ok && len(managedFields) == 0 || slices.Contains(managedFields, k) {
+			delete(baseMap, k)
+			delete(baseAttributeTypes, k)
+		}
+	}
+
+	// Next, iterate through new attrs, adding or updating any managed fields
 	for k, v := range updateMap {
 		// No managed fields specified, or the field is in the managed fields list
 		if len(managedFields) == 0 || slices.Contains(managedFields, k) {
