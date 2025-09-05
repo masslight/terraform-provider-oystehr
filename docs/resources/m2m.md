@@ -22,6 +22,7 @@ description: |-
 ### Optional
 
 - `access_policy` (Attributes) The access policy associated with the M2M resource. (see [below for nested schema](#nestedatt--access_policy))
+- `client_secret` (String, Sensitive) The client secret of the M2M resource. This is only set on creation and when rotated through the API.
 - `description` (String) A description of the M2M resource.
 - `jwks_url` (String) The JWKS URL for the M2M resource.
 - `roles` (List of String) A list of roles associated with the M2M resource.

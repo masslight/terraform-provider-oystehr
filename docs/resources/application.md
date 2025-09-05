@@ -37,4 +37,5 @@ description: |-
 ### Read-Only
 
 - `client_id` (String) The client ID of the application.
+- `connection_name` (String) The connection name of the application, for use by frontend components.
 - `id` (String) The ID of the application.

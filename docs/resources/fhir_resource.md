@@ -17,7 +17,7 @@ description: |-
 
 ### Required
 
-- `data` (String) The FHIR resource data in JSON format.
+- `data` (Dynamic) The FHIR resource data as a terraform object.
 - `type` (String) The FHIR resource type (e.g., Patient, Observation).
 
 ### Optional
