@@ -9,7 +9,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
@@ -375,7 +377,13 @@ func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 				"size":          types.Int64Type,
 				"last_modified": types.StringType,
 			})
+		} else {
+			plan.SourceChecksum = state.SourceChecksum
+			plan.FileInfo = state.FileInfo
 		}
+	} else {
+		plan.SourceChecksum = state.SourceChecksum
+		plan.FileInfo = state.FileInfo
 	}
 
 	resp.Plan.Set(ctx, &plan)
@@ -409,6 +417,9 @@ var (
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the Zambda function.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -521,6 +532,9 @@ var (
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the Zambda function.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,

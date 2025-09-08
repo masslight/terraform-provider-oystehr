@@ -62,6 +62,9 @@ func (r *LabRouteResource) Schema(_ context.Context, req resource.SchemaRequest,
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The unique identifier for the route.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"lab_id": schema.StringAttribute{
 				Required:    true,
