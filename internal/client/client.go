@@ -10,6 +10,7 @@ type ClientConfig struct {
 type Client struct {
 	config      *ClientConfig
 	Application *applicationClient
+	Fax         *faxClient
 	Fhir        *fhirClient
 	Lab         *labClient
 	M2M         *m2mClient
@@ -28,6 +29,7 @@ func New(config *ClientConfig) *Client {
 	return &Client{
 		config:      config,
 		Application: newApplicationClient(config),
+		Fax:         newFaxClient(config),
 		Fhir:        newFhirClient(config),
 		Lab:         newLabClient(config),
 		M2M:         newM2MClient(config),
