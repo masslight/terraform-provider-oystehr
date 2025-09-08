@@ -22,9 +22,11 @@ description: |-
 
 ### Optional
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `memory_size` (Number) The memory size allocated for the Zambda function in MB.
 - `schedule` (Attributes) The schedule for the Zambda function. (see [below for nested schema](#nestedatt--schedule))
-- `source` (String) The pre-bundled source code of the Zambda function.
+- `source` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The pre-bundled source code of the Zambda function.
 - `timeout` (Number) The timeout for the Zambda function in seconds.
 - `trigger_method` (String) The trigger method for the Zambda function.
 
