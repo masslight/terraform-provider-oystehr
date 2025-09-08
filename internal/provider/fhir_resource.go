@@ -170,6 +170,9 @@ func (r *FhirResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the FHIR resource.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"type": schema.StringAttribute{
 				Required:    true,
@@ -406,9 +409,6 @@ func (r *FhirResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	// ID never changes once set
-	plan.ID = state.ID
 
 	// Handle `managed_fields` and merging of `data`
 	if !plan.Data.Equal(state.Data) {

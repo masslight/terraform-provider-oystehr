@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -99,6 +101,9 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the application.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -107,10 +112,16 @@ func (r *ApplicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"client_id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The client ID of the application.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"connection_name": schema.StringAttribute{
 				Computed:    true,
 				Description: "The connection name of the application, for use by frontend components.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"description": schema.StringAttribute{
 				Optional:    true,

@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 )
@@ -75,10 +77,16 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The ID of the M2M resource.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"client_id": schema.StringAttribute{
 				Computed:    true,
 				Description: "The client ID of the M2M resource.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,
@@ -89,10 +97,13 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Description: "A description of the M2M resource.",
 			},
 			"client_secret": schema.StringAttribute{
-				Optional:    true,
 				Computed:    true,
 				Description: "The client secret of the M2M resource. This is only set on creation and when rotated through the API.",
 				Sensitive:   true,
+				// Remove if we want to add support for rotating client secret from terraform (using client_secret_version) or some such
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"access_policy": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -116,6 +127,7 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Default:     listdefault.StaticValue(types.ListValueMust(types.StringType, []attr.Value{})),
 			},
 			"profile": schema.StringAttribute{
+				Optional:    true,
 				Computed:    true,
 				Description: "The profile associated with the M2M resource.",
 			},
