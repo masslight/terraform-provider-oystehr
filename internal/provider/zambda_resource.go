@@ -233,6 +233,11 @@ func (r *ZambdaResource) Create(ctx context.Context, req resource.CreateRequest,
 		err = r.client.Zambda.UploadZambdaSource(ctx, *createdZambda.ID, config.Source.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Uploading Zambda Source", err.Error())
+			// Roll back create
+			err = r.client.Zambda.DeleteZambda(ctx, *createdZambda.ID)
+			if err != nil {
+				resp.Diagnostics.AddError("Error Rolling Back Zambda Creation", err.Error())
+			}
 			return
 		}
 	}
@@ -313,6 +318,12 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 			err = r.client.Zambda.UploadZambdaSource(ctx, *updatedZambda.ID, config.Source.ValueString())
 			if err != nil {
 				resp.Diagnostics.AddError("Error Uploading Zambda Source", err.Error())
+				// Roll back update
+				previousStateZambda := convertZambdaToClientZambda(ctx, state)
+				_, err = r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &previousStateZambda)
+				if err != nil {
+					resp.Diagnostics.AddError("Error Rolling Back Zambda Update", err.Error())
+				}
 				return
 			}
 		}
