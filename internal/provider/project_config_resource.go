@@ -202,5 +202,14 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 }
 
 func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Deleting Project Configuration is not supported. This is a no-op.
+	// Deleting Project Configuration re-sets the project to its default state.
+	signupEnabled := false
+	_, err := r.client.Project.UpdateProject(ctx, &client.ProjectUpdateParams{
+		SignupEnabled:        &signupEnabled,
+		DefaultPatientRoleId: nil,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error Deleting Project Configuration", err.Error())
+		return
+	}
 }
