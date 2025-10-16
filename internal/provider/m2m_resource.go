@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -16,15 +17,16 @@ import (
 )
 
 type M2M struct {
-	ID           types.String `tfsdk:"id"`
-	ClientID     types.String `tfsdk:"client_id"`
-	ClientSecret types.String `tfsdk:"client_secret"`
-	Profile      types.String `tfsdk:"profile"`
-	Name         types.String `tfsdk:"name"`
-	Description  types.String `tfsdk:"description"`
-	AccessPolicy types.Object `tfsdk:"access_policy"`
-	Roles        types.List   `tfsdk:"roles"`
-	JwksURL      types.String `tfsdk:"jwks_url"`
+	ID                  types.String `tfsdk:"id"`
+	ClientID            types.String `tfsdk:"client_id"`
+	ClientSecret        types.String `tfsdk:"client_secret"`
+	ClientSecretVersion types.Int64  `tfsdk:"client_secret_version"`
+	Profile             types.String `tfsdk:"profile"`
+	Name                types.String `tfsdk:"name"`
+	Description         types.String `tfsdk:"description"`
+	AccessPolicy        types.Object `tfsdk:"access_policy"`
+	Roles               types.List   `tfsdk:"roles"`
+	JwksURL             types.String `tfsdk:"jwks_url"`
 }
 
 func convertM2MToClientM2M(ctx context.Context, m2m M2M) client.M2M {
@@ -40,22 +42,24 @@ func convertM2MToClientM2M(ctx context.Context, m2m M2M) client.M2M {
 	}
 }
 
-func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M, clientSecret *string) M2M {
+func convertClientM2MToM2M(ctx context.Context, clientM2M *client.M2M, clientSecret *string, clientSecretVersion int64) M2M {
 	return M2M{
-		ID:           stringPointerToTfString(clientM2M.ID),
-		ClientID:     stringPointerToTfString(clientM2M.ClientID),
-		ClientSecret: types.StringPointerValue(clientSecret),
-		Profile:      stringPointerToTfString(clientM2M.Profile),
-		Name:         stringPointerToTfString(clientM2M.Name),
-		Description:  stringPointerToTfString(clientM2M.Description),
-		AccessPolicy: convertClientAccessPolicyToAccessPolicy(ctx, clientM2M.AccessPolicy),
-		Roles:        convertStringSliceToList(ctx, clientM2M.Roles),
-		JwksURL:      stringPointerToTfString(clientM2M.JwksURL),
+		ID:                  stringPointerToTfString(clientM2M.ID),
+		ClientID:            stringPointerToTfString(clientM2M.ClientID),
+		ClientSecret:        types.StringPointerValue(clientSecret),
+		ClientSecretVersion: types.Int64Value(clientSecretVersion),
+		Profile:             stringPointerToTfString(clientM2M.Profile),
+		Name:                stringPointerToTfString(clientM2M.Name),
+		Description:         stringPointerToTfString(clientM2M.Description),
+		AccessPolicy:        convertClientAccessPolicyToAccessPolicy(ctx, clientM2M.AccessPolicy),
+		Roles:               convertStringSliceToList(ctx, clientM2M.Roles),
+		JwksURL:             stringPointerToTfString(clientM2M.JwksURL),
 	}
 }
 
 var _ resource.Resource = &M2MResource{}
 var _ resource.ResourceWithConfigure = &M2MResource{}
+var _ resource.ResourceWithModifyPlan = &M2MResource{}
 var _ resource.ResourceWithIdentity = &M2MResource{}
 var _ resource.ResourceWithImportState = &M2MResource{}
 
@@ -100,10 +104,12 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Computed:    true,
 				Description: "The client secret of the M2M resource. This is only set on creation and when rotated through the API.",
 				Sensitive:   true,
-				// Remove if we want to add support for rotating client secret from terraform (using client_secret_version) or some such
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
+			},
+			"client_secret_version": schema.Int64Attribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Increment this value to trigger a rotation of the client secret.",
+				Default:     int64default.StaticInt64(0),
 			},
 			"access_policy": schema.SingleNestedAttribute{
 				Optional:    true,
@@ -130,6 +136,9 @@ func (r *M2MResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Optional:    true,
 				Computed:    true,
 				Description: "The profile associated with the M2M resource.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"jwks_url": schema.StringAttribute{
 				Optional:    true,
@@ -183,7 +192,7 @@ func (r *M2MResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, createdM2M, clientSecret)
+	retM2M := convertClientM2MToM2M(ctx, createdM2M, clientSecret, plan.ClientSecretVersion.ValueInt64())
 	identity := IDIdentityModel{
 		ID: retM2M.ID,
 	}
@@ -217,7 +226,7 @@ func (r *M2MResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, m2m, state.ClientSecret.ValueStringPointer())
+	retM2M := convertClientM2MToM2M(ctx, m2m, state.ClientSecret.ValueStringPointer(), state.ClientSecretVersion.ValueInt64())
 	retIdentity := IDIdentityModel{
 		ID: retM2M.ID,
 	}
@@ -246,7 +255,17 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	retM2M := convertClientM2MToM2M(ctx, updatedM2M, state.ClientSecret.ValueStringPointer())
+	clientSecret := state.ClientSecret.ValueStringPointer()
+	if !state.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() != plan.ClientSecretVersion.ValueInt64() {
+		newSecret, err := r.client.M2M.RotateM2MSecret(ctx, state.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Error Rotating M2M Secret", err.Error())
+			return
+		}
+		clientSecret = newSecret
+	}
+
+	retM2M := convertClientM2MToM2M(ctx, updatedM2M, clientSecret, plan.ClientSecretVersion.ValueInt64())
 
 	resp.State.Set(ctx, retM2M)
 }
@@ -269,4 +288,26 @@ func (r *M2MResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 func (r *M2MResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
+}
+
+func (r *M2MResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	var state M2M
+	var plan M2M
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	diags = req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If client_secret_version is set and has changed, rotate the client secret
+	if !plan.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() != plan.ClientSecretVersion.ValueInt64() {
+		plan.ClientSecret = types.StringUnknown()
+	} else {
+		plan.ClientSecret = state.ClientSecret
+	}
+
+	resp.Plan.Set(ctx, &plan)
 }
