@@ -356,7 +356,14 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 		resource = convertedResource
 	} else {
-		resource = plan
+		resource = FhirResourceData{
+			ID:            state.ID,
+			Type:          state.Type,
+			Data:          state.Data,
+			Meta:          state.Meta,
+			RemovalPolicy: plan.RemovalPolicy,
+			ManagedFields: plan.ManagedFields,
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
