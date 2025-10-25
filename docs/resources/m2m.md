@@ -22,6 +22,7 @@ description: |-
 ### Optional
 
 - `access_policy` (Attributes) The access policy associated with the M2M resource. (see [below for nested schema](#nestedatt--access_policy))
+- `client_secret_version` (Number) Increment this value to trigger a rotation of the client secret.
 - `description` (String) A description of the M2M resource.
 - `jwks_url` (String) The JWKS URL for the M2M resource.
 - `profile` (String) The profile associated with the M2M resource.
