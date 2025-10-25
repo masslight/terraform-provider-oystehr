@@ -356,7 +356,7 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 		resource = convertedResource
 	} else {
-		resource = state
+		resource = plan
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
