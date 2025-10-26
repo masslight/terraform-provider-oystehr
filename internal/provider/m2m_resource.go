@@ -256,7 +256,7 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	clientSecret := state.ClientSecret.ValueStringPointer()
-	if !state.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() != plan.ClientSecretVersion.ValueInt64() {
+	if !state.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() < plan.ClientSecretVersion.ValueInt64() {
 		newSecret, err := r.client.M2M.RotateM2MSecret(ctx, state.ID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Rotating M2M Secret", err.Error())
@@ -303,7 +303,7 @@ func (r *M2MResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 	}
 
 	// If client_secret_version is set and has changed, rotate the client secret
-	if !plan.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() != plan.ClientSecretVersion.ValueInt64() {
+	if !plan.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() < plan.ClientSecretVersion.ValueInt64() {
 		plan.ClientSecret = types.StringUnknown()
 	} else {
 		plan.ClientSecret = state.ClientSecret
