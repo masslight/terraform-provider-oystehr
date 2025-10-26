@@ -294,16 +294,21 @@ func (r *M2MResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 	var state M2M
 	var plan M2M
 
-	diags := req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	diags = req.Plan.Get(ctx, &plan)
+	if !req.State.Raw.IsNull() {
+		diags := req.State.Get(ctx, &state)
+		resp.Diagnostics.Append(diags...)
+	}
+	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// If client_secret_version is set and has changed, rotate the client secret
-	if !plan.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() < plan.ClientSecretVersion.ValueInt64() {
+	if req.State.Raw.IsNull() {
+		// On create, always set client_secret to unknown
+		plan.ClientSecret = types.StringUnknown()
+	} else if !plan.ClientSecretVersion.IsNull() && state.ClientSecretVersion.ValueInt64() < plan.ClientSecretVersion.ValueInt64() {
+		// If client_secret_version is set and has changed, rotate the client secret
 		plan.ClientSecret = types.StringUnknown()
 	} else {
 		plan.ClientSecret = state.ClientSecret
