@@ -147,8 +147,12 @@ func (r *ProjectConfigResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	retProject := clientProjectToProject(ctx, updatedProject)
+	retIdentity := IDIdentityModel{
+		ID: retProject.ID,
+	}
 
 	resp.State.Set(ctx, retProject)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ProjectConfigResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
