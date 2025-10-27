@@ -16,7 +16,7 @@ import (
 
 const (
 	fhirBaseURL  = "https://fhir-api.zapehr.com"
-	maxBatchSize = 100 // Maximum number of entries to process in a single batch
+	maxBatchSize = 10 // Maximum number of entries to process in a single batch
 )
 
 type entryResult struct {
