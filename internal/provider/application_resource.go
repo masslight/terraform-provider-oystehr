@@ -334,6 +334,12 @@ func (r *ApplicationResource) ModifyPlan(ctx context.Context, req resource.Modif
 	var state Application
 	var plan Application
 
+	if req.Plan.Raw.IsNull() {
+		// If the plan is null, we cannot modify it, so we return early.
+		resp.Plan = req.Plan
+		return
+	}
+
 	if !req.State.Raw.IsNull() {
 		diags := req.State.Get(ctx, &state)
 		resp.Diagnostics.Append(diags...)
