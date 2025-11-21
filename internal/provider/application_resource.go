@@ -80,6 +80,7 @@ func applicationToClientApp(plan Application) client.Application {
 
 var _ resource.Resource = &ApplicationResource{}
 var _ resource.ResourceWithConfigure = &ApplicationResource{}
+var _ resource.ResourceWithModifyPlan = &ApplicationResource{}
 var _ resource.ResourceWithIdentity = &ApplicationResource{}
 var _ resource.ResourceWithImportState = &ApplicationResource{}
 
@@ -327,4 +328,25 @@ func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteReq
 
 func (r *ApplicationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
+}
+
+func (r *ApplicationResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	var state Application
+	var plan Application
+
+	if !req.State.Raw.IsNull() {
+		diags := req.State.Get(ctx, &state)
+		resp.Diagnostics.Append(diags...)
+	}
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.State.Raw.IsNull() {
+		if !state.LoginWithEmailEnabled.Equal(plan.LoginWithEmailEnabled) {
+			plan.ConnectionName = types.StringUnknown()
+		}
+	}
+	resp.Plan.Set(ctx, &plan)
 }
