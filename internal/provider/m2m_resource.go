@@ -294,6 +294,12 @@ func (r *M2MResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 	var state M2M
 	var plan M2M
 
+	if req.Plan.Raw.IsNull() {
+		// If the plan is null, we cannot modify it, so we return early.
+		resp.Plan = req.Plan
+		return
+	}
+
 	if !req.State.Raw.IsNull() {
 		diags := req.State.Get(ctx, &state)
 		resp.Diagnostics.Append(diags...)
