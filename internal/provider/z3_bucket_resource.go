@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -151,6 +152,10 @@ func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	clientBucket, err := r.client.Z3.GetBucket(ctx, state.Name.ValueString())
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error Reading Z3 Bucket", err.Error())
 		return
 	}

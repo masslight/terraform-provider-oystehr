@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -279,6 +280,10 @@ func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	zambda, err := r.client.Zambda.GetZambda(ctx, id)
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error Reading Zambda", err.Error())
 		return
 	}
