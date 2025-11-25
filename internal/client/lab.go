@@ -11,14 +11,26 @@ const (
 	labBaseURL = "https://labs-api.zapehr.com/v1"
 )
 
-type LabRoute struct {
-	RouteGUID     *string `json:"routeGuid"`
-	LabGUID       *string `json:"labGuid"`
-	AccountNumber *string `json:"accountNumber"`
+type LabRouteAddress struct {
+	Address1          *string `json:"address1"`
+	Address2          *string `json:"address2,omitempty"`
+	City              *string `json:"city"`
+	StateProvinceCode *string `json:"stateProvinceCode"`
+	PostalCode        *string `json:"postalCode"`
 }
 
-type CreateLabRouteOutput struct {
-	RouteGUID *string `json:"routeGuid"`
+type LabRoute struct {
+	RouteGUID                 *string          `json:"routeGuid"`
+	AccountNumber             *string          `json:"accountNumber"`
+	LabGUID                   *string          `json:"labGuid"`
+	LabName                   *string          `json:"labName,omitempty"`
+	PrimaryID                 *string          `json:"primaryId,omitempty"`
+	PrimaryName               *string          `json:"primaryName,omitempty"`
+	PrimaryAddress            *LabRouteAddress `json:"primaryAddress,omitempty"`
+	ClientSiteID              *string          `json:"clientSiteId,omitempty"`
+	EULAVersion               *string          `json:"eulaVersion,omitempty"`
+	EULAAccepterFullName      *string          `json:"eulaAccepterFullName,omitempty"`
+	EULAAcceptanceDateTimeUTC *string          `json:"eulaAcceptanceDateTimeUtc,omitempty"`
 }
 
 type labClient struct {
@@ -42,7 +54,9 @@ func (c *labClient) CreateLabRoute(ctx context.Context, route *LabRoute) (*LabRo
 		return nil, fmt.Errorf("failed to create LabRoute: %w; %+v, %s", err, route, body)
 	}
 
-	var createdRouteOutput CreateLabRouteOutput
+	var createdRouteOutput *struct {
+		RouteGUID *string `json:"routeGuid"`
+	}
 	if err := json.Unmarshal(responseBody, &createdRouteOutput); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -56,27 +70,22 @@ func (c *labClient) CreateLabRoute(ctx context.Context, route *LabRoute) (*LabRo
 }
 
 func (c *labClient) GetLabRoute(ctx context.Context, routeGUID string) (*LabRoute, error) {
-	url := fmt.Sprintf("%s/route", labBaseURL)
+	url := fmt.Sprintf("%s/route/%s", labBaseURL, routeGUID)
 
 	responseBody, err := request(ctx, c.config, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get LabRoute: %w", err)
 	}
 
-	var route []LabRoute
+	var route *LabRoute
 	if err := json.Unmarshal(responseBody, &route); err != nil {
 		return nil, fmt.Errorf("failed to decode LabRoute response: %w", err)
 	}
 
-	if len(route) == 0 {
+	if route == nil {
 		return nil, fmt.Errorf("LabRoute not found")
 	}
-	for _, r := range route {
-		if r.RouteGUID != nil && *r.RouteGUID == routeGUID {
-			return &r, nil
-		}
-	}
-	return nil, fmt.Errorf("LabRoute not found")
+	return route, nil
 }
 
 func (c *labClient) DeleteLabRoute(ctx context.Context, routeGUID string, labRoute *LabRoute) error {
