@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -129,6 +130,10 @@ func (r *FaxNumberResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	route, err := r.client.Fax.GetFaxNumber(ctx, faxNumber)
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error Reading Fax Number", err.Error())
 		return
 	}

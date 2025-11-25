@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -150,6 +151,10 @@ func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	role, err := r.client.Role.GetRole(ctx, id)
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error Reading Role", err.Error())
 		return
 	}
