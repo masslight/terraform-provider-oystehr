@@ -2,9 +2,11 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -15,8 +17,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
 	"github.com/masslight/terraform-provider-oystehr/internal/fs"
+	"github.com/masslight/terraform-provider-oystehr/internal/retry"
 )
 
 type RetryPolicy struct {
@@ -243,19 +247,23 @@ func (r *ZambdaResource) Create(ctx context.Context, req resource.CreateRequest,
 		}
 	}
 
-	retrievedZambda, err := r.client.Zambda.GetZambda(ctx, *createdZambda.ID)
+	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, *createdZambda.ID, plan.SourceChecksum.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
 		return
 	}
+	if retrievedZambda == nil {
+		// Error already added to diagnostics in getZambdaAfterMutation
+		return
+	}
 
 	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan.SourceChecksum.ValueString())
-	identity := IDIdentityModel{
+	retIdentity := IDIdentityModel{
 		ID: retZambda.ID,
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
-	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -334,11 +342,16 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		}
 	}
 
-	retrievedZambda, err := r.client.Zambda.GetZambda(ctx, *updatedZambda.ID)
+	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, *updatedZambda.ID, plan.SourceChecksum.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError("Error Retrieving Updated Zambda", err.Error())
+		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
 		return
 	}
+	if retrievedZambda == nil {
+		// Error already added to diagnostics in getZambdaAfterMutation
+		return
+	}
+
 	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan.SourceChecksum.ValueString())
 
 	resp.State.Set(ctx, retZambda)
@@ -358,6 +371,47 @@ func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		resp.Diagnostics.AddError("Error Deleting Zambda", err.Error())
 		return
 	}
+}
+
+func (r *ZambdaResource) getZambdaAfterMutation(ctx context.Context, diags *diag.Diagnostics, id string, expectedChecksum string) (*client.ZambdaFunction, error) {
+	return retry.RetryWithBackoff(ctx, func() (*client.ZambdaFunction, error) {
+		retrievedZambda, err := r.client.Zambda.GetZambda(ctx, id)
+		if err != nil {
+			diags.AddError("Error Retrieving Created Zambda", err.Error())
+			// Bail out of retries
+			return nil, nil
+		}
+
+		// Validation error checks to trigger retry
+		if retrievedZambda.Status == nil {
+			tflog.Debug(ctx, "Zambda status is nil, retrying")
+			return nil, fmt.Errorf("Zambda status is nil")
+		}
+		if *retrievedZambda.Status == "Failed" {
+			diags.AddError("Error Creating Zambda", "Zambda creation failed with status 'Failed'")
+			// Bail out of retries
+			return nil, nil
+		}
+		if *retrievedZambda.Status != "Active" {
+			tflog.Debug(ctx, fmt.Sprintf("Zambda status is %s, retrying", *retrievedZambda.Status))
+			return nil, fmt.Errorf("Zambda status is %s, expecting Active", *retrievedZambda.Status)
+		}
+
+		if retrievedZambda.FileInfo == nil {
+			tflog.Debug(ctx, "Zambda FileInfo is nil, retrying")
+			return nil, fmt.Errorf("Zambda FileInfo is nil")
+		}
+		if retrievedZambda.FileInfo.Checksum != nil && *retrievedZambda.FileInfo.Checksum != expectedChecksum {
+			tflog.Debug(ctx, fmt.Sprintf("Zambda checksum is %s, expecting %s, retrying", *retrievedZambda.FileInfo.Checksum, expectedChecksum))
+			return nil, fmt.Errorf("Zambda checksum is %s, expecting %s", *retrievedZambda.FileInfo.Checksum, expectedChecksum)
+		}
+
+		return retrievedZambda, nil
+	}, retry.RetryConfig{
+		BaseBackoff: retry.BaseBackoffDefault,
+		MaxBackoff:  16000,
+		MaxAttempts: 10,
+	})
 }
 
 func (r *ZambdaResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
