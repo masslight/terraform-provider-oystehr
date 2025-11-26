@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -18,8 +17,6 @@ type Project struct {
 	Description          types.String `tfsdk:"description"`
 	SignupEnabled        types.Bool   `tfsdk:"signup_enabled"`
 	DefaultPatientRoleId types.String `tfsdk:"default_patient_role_id"`
-	FhirVersion          types.String `tfsdk:"fhir_version"`
-	Sandbox              types.Bool   `tfsdk:"sandbox"`
 }
 
 func clientProjectToProject(ctx context.Context, project *client.Project) Project {
@@ -29,8 +26,6 @@ func clientProjectToProject(ctx context.Context, project *client.Project) Projec
 		Description:          stringPointerToTfString(project.Description),
 		SignupEnabled:        boolPointerToTfBool(project.SignupEnabled),
 		DefaultPatientRoleId: stringPointerToTfString(project.DefaultPatientRole.ID),
-		FhirVersion:          stringPointerToTfString(project.FhirVersion),
-		Sandbox:              boolPointerToTfBool(project.Sandbox),
 	}
 }
 
@@ -89,20 +84,6 @@ func (r *ProjectConfigResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:    true,
 				Computed:    true,
 				Description: "The default patient role ID for the project.",
-			},
-			"fhir_version": schema.StringAttribute{
-				Computed:    true,
-				Description: "The FHIR version for the project.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
-			"sandbox": schema.BoolAttribute{
-				Computed:    true,
-				Description: "Whether the project is in sandbox mode.",
-				PlanModifiers: []planmodifier.Bool{
-					boolplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}

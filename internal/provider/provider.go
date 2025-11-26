@@ -88,7 +88,9 @@ func (o *OystehrProvider) Configure(ctx context.Context, req provider.ConfigureR
 }
 
 func (o *OystehrProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewProjectDataSource,
+	}
 }
 
 func (o *OystehrProvider) Resources(ctx context.Context) []func() resource.Resource {
