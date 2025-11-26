@@ -32,6 +32,7 @@ type LabRoute struct {
 	PrimaryID                 types.String `tfsdk:"primary_id"`
 	PrimaryName               types.String `tfsdk:"primary_name"`
 	PrimaryAddress            types.Object `tfsdk:"primary_address"`
+	PrimaryPhone              types.String `tfsdk:"primary_phone"`
 	ClientSiteID              types.String `tfsdk:"client_site_id"`
 	EULAVersion               types.String `tfsdk:"eula_version"`
 	EULAAccepterFullName      types.String `tfsdk:"eula_accepter_full_name"`
@@ -63,6 +64,7 @@ func convertLabRouteToClientLabRoute(ctx context.Context, labRoute LabRoute) cli
 		PrimaryID:                 tfStringToStringPointer(labRoute.PrimaryID),
 		PrimaryName:               tfStringToStringPointer(labRoute.PrimaryName),
 		PrimaryAddress:            primaryAddress,
+		PrimaryPhone:              tfStringToStringPointer(labRoute.PrimaryPhone),
 		ClientSiteID:              tfStringToStringPointer(labRoute.ClientSiteID),
 		EULAVersion:               tfStringToStringPointer(labRoute.EULAVersion),
 		EULAAccepterFullName:      tfStringToStringPointer(labRoute.EULAAccepterFullName),
@@ -85,6 +87,7 @@ func convertClientLabRouteToLabRoute(ctx context.Context, clientLabRoute *client
 		PrimaryID:                 stringPointerToTfString(clientLabRoute.PrimaryID),
 		PrimaryName:               stringPointerToTfString(clientLabRoute.PrimaryName),
 		PrimaryAddress:            primaryAddress,
+		PrimaryPhone:              stringPointerToTfString(clientLabRoute.PrimaryPhone),
 		ClientSiteID:              stringPointerToTfString(clientLabRoute.ClientSiteID),
 		EULAVersion:               stringPointerToTfString(clientLabRoute.EULAVersion),
 		EULAAccepterFullName:      stringPointerToTfString(clientLabRoute.EULAAccepterFullName),
@@ -175,6 +178,13 @@ func (r *LabRouteResource) Schema(_ context.Context, req resource.SchemaRequest,
 				},
 				PlanModifiers: []planmodifier.Object{
 					objectplanmodifier.RequiresReplace(),
+				},
+			},
+			"primary_phone": schema.StringAttribute{
+				Optional:    true,
+				Description: "The primary phone number for the lab route.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"client_site_id": schema.StringAttribute{

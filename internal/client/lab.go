@@ -27,6 +27,7 @@ type LabRoute struct {
 	PrimaryID                 *string          `json:"primaryId,omitempty"`
 	PrimaryName               *string          `json:"primaryName,omitempty"`
 	PrimaryAddress            *LabRouteAddress `json:"primaryAddress,omitempty"`
+	PrimaryPhone              *string          `json:"primaryPhone,omitempty"`
 	ClientSiteID              *string          `json:"clientSiteId,omitempty"`
 	EULAVersion               *string          `json:"eulaVersion,omitempty"`
 	EULAAccepterFullName      *string          `json:"eulaAccepterFullName,omitempty"`
