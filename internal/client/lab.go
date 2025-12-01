@@ -86,6 +86,12 @@ func (c *labClient) GetLabRoute(ctx context.Context, routeGUID string) (*LabRout
 	if route == nil {
 		return nil, fmt.Errorf("LabRoute not found")
 	}
+
+	// Modify data because of bad API design
+	if route.PrimaryAddress != nil && route.PrimaryAddress.Address1 == nil {
+		route.PrimaryAddress = nil
+	}
+
 	return route, nil
 }
 

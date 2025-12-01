@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -15,6 +16,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
+)
+
+var (
+	phoneRegexp = regexp.MustCompile(`^\(\d{3}\) \d{3}-\d{4}$`) // e.g., (123) 456-7890
 )
 
 type LabRouteAddress struct {
@@ -55,7 +60,15 @@ var labRouteAddressAttributeTypes map[string]attr.Type = map[string]attr.Type{
 func convertLabRouteToClientLabRoute(ctx context.Context, labRoute LabRoute) client.LabRoute {
 	var primaryAddress *client.LabRouteAddress
 	if !labRoute.PrimaryAddress.IsNull() {
-		labRoute.PrimaryAddress.As(ctx, &primaryAddress, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})
+		var tfAddress LabRouteAddress
+		labRoute.PrimaryAddress.As(ctx, &tfAddress, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})
+		primaryAddress = &client.LabRouteAddress{
+			Address1:          tfStringToStringPointer(tfAddress.Address1),
+			Address2:          tfStringToStringPointer(tfAddress.Address2),
+			City:              tfStringToStringPointer(tfAddress.City),
+			StateProvinceCode: tfStringToStringPointer(tfAddress.StateProvinceCode),
+			PostalCode:        tfStringToStringPointer(tfAddress.PostalCode),
+		}
 	}
 	return client.LabRoute{
 		RouteGUID:                 tfStringToStringPointer(labRoute.ID),
@@ -78,7 +91,14 @@ func convertClientLabRouteToLabRoute(ctx context.Context, clientLabRoute *client
 	if clientLabRoute.PrimaryAddress == nil {
 		primaryAddress = types.ObjectNull(labRouteAddressAttributeTypes)
 	} else {
-		primaryAddress, _ = types.ObjectValueFrom(ctx, labRouteAddressAttributeTypes, clientLabRoute.PrimaryAddress)
+		tfAddress := LabRouteAddress{
+			Address1:          stringPointerToTfString(clientLabRoute.PrimaryAddress.Address1),
+			Address2:          stringPointerToTfString(clientLabRoute.PrimaryAddress.Address2),
+			City:              stringPointerToTfString(clientLabRoute.PrimaryAddress.City),
+			StateProvinceCode: stringPointerToTfString(clientLabRoute.PrimaryAddress.StateProvinceCode),
+			PostalCode:        stringPointerToTfString(clientLabRoute.PrimaryAddress.PostalCode),
+		}
+		primaryAddress, _ = types.ObjectValueFrom(ctx, labRouteAddressAttributeTypes, tfAddress)
 	}
 	return LabRoute{
 		ID:                        stringPointerToTfString(clientLabRoute.RouteGUID),
@@ -183,7 +203,7 @@ func (r *LabRouteResource) Schema(_ context.Context, req resource.SchemaRequest,
 			},
 			"primary_phone": schema.StringAttribute{
 				Optional:    true,
-				Description: "The primary phone number for the lab route.",
+				Description: "The primary phone number for the lab route. Format: (123) 456-7890",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -256,6 +276,15 @@ func (r *LabRouteResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	clientLabRoute := convertLabRouteToClientLabRoute(ctx, plan)
+
+	// Validate
+	if clientLabRoute.PrimaryPhone != nil && !phoneRegexp.MatchString(*clientLabRoute.PrimaryPhone) {
+		resp.Diagnostics.AddError(
+			"Invalid Primary Phone",
+			"The primary phone number must be in the format (123) 456-7890.",
+		)
+		return
+	}
 
 	createdRoute, err := r.client.Lab.CreateLabRoute(ctx, &clientLabRoute)
 	if err != nil {
