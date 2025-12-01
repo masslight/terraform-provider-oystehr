@@ -20,6 +20,32 @@ description: |-
 - `account_number` (String) The account number associated with the lab route.
 - `lab_id` (String) The unique identifier for the lab.
 
+### Optional
+
+- `client_site_id` (String) The client site identifier.
+- `eula_acceptance_date_time_utc` (String) The UTC date and time when the EULA was accepted.
+- `eula_accepter_full_name` (String) The full name of the person who accepted the EULA.
+- `eula_version` (String) The version of the End User License Agreement (EULA) accepted.
+- `primary_address` (Attributes) The primary address for the lab route. (see [below for nested schema](#nestedatt--primary_address))
+- `primary_name` (String) The primary name for the lab route.
+- `primary_phone` (String) The primary phone number for the lab route. Format: (123) 456-7890
+
 ### Read-Only
 
 - `id` (String) The unique identifier for the route.
+- `lab_name` (String) The name of the lab.
+- `primary_id` (String) The primary identifier for the lab route.
+
+<a id="nestedatt--primary_address"></a>
+### Nested Schema for `primary_address`
+
+Required:
+
+- `address1` (String) The first line of the address.
+- `city` (String) The city of the address.
+- `postal_code` (String) The postal code of the address.
+- `state_province_code` (String) The state or province code of the address.
+
+Optional:
+
+- `address2` (String) The second line of the address.
