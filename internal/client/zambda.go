@@ -69,6 +69,7 @@ type FileInfo struct {
 	Name         *string `json:"name,omitempty"`
 	Size         *int64  `json:"size,omitempty"`
 	LastModified *string `json:"lastModified,omitempty"`
+	Checksum     *string `json:"checksum,omitempty"`
 }
 
 const (

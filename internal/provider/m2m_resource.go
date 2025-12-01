@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -222,6 +223,10 @@ func (r *M2MResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	m2m, err := r.client.M2M.GetM2M(ctx, id)
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error Reading M2M", err.Error())
 		return
 	}

@@ -166,6 +166,10 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	object, err := r.client.Z3.ListObject(ctx, state.Bucket.ValueString(), state.Key.ValueString())
 	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading Z3 Object",
 			"Could not read Z3 object: "+err.Error(),

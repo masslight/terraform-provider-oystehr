@@ -24,6 +24,4 @@ description: |-
 
 ### Read-Only
 
-- `fhir_version` (String) The FHIR version for the project.
 - `id` (String) The ID of the project.
-- `sandbox` (Boolean) Whether the project is in sandbox mode.
