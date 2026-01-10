@@ -2,6 +2,7 @@ package retry
 
 import (
 	"context"
+	"math"
 	"math/rand"
 	"time"
 
@@ -9,38 +10,54 @@ import (
 )
 
 const (
-	BaseBackoffDefault time.Duration = 500
-	MaxBackoffDefault  time.Duration = 8000
+	BaseBackoffDefault time.Duration = 500 * time.Millisecond
+	MaxBackoffDefault  time.Duration = 8000 * time.Millisecond
+	MaxDurationDefault time.Duration = 30 * time.Second
 	MaxAttemptsDefault               = 3
+	Disabled                         = 0
 )
 
 var (
 	// DefaultRetryConfig defines the default configuration for retrying operations.
 	DefaultRetryConfig = RetryConfig{
-		BaseBackoff: BaseBackoffDefault,
-		MaxBackoff:  MaxBackoffDefault,
-		MaxAttempts: MaxAttemptsDefault,
+		BaseBackoff:   BaseBackoffDefault,
+		MaxBackoff:    MaxBackoffDefault,
+		MaxDuration:   MaxDurationDefault,
+		MaxAttempts:   MaxAttemptsDefault,
+		DisableJitter: false,
 	}
 )
 
 type RetryConfig struct {
 	BaseBackoff time.Duration
 	MaxBackoff  time.Duration
+	// Set to retry.Disable to disable max duration
+	MaxDuration time.Duration
+	// Set to retry.Disable to disable max attempts
 	MaxAttempts int
+	// Set to true to wait the full backoff
+	DisableJitter bool
 }
 
 func RetryWithBackoff[T any](ctx context.Context, operation func() (T, error), config RetryConfig) (T, error) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	baseBackoff := time.Duration(config.BaseBackoff) * time.Millisecond
-	maxBackoff := time.Duration(config.MaxBackoff) * time.Millisecond
+	baseBackoff := config.BaseBackoff
+	maxBackoff := config.MaxBackoff
+	maxDuration := config.MaxDuration
+	start := time.Now()
 
-	for attempt := range config.MaxAttempts {
+	for attempt := range int(math.Max(float64(config.MaxAttempts), 1000)) {
 		res, err := operation()
 		if err == nil {
 			return res, nil
 		}
 		// If this was the last attempt, return the error
-		if attempt == config.MaxAttempts-1 {
+		if config.MaxAttempts > Disabled && attempt == config.MaxAttempts-1 {
+			var zero T
+			return zero, err
+		}
+		// If we have elapsed max duration, return the error
+		if config.MaxDuration > Disabled && time.Since(start) > maxDuration {
 			var zero T
 			return zero, err
 		}
@@ -50,6 +67,9 @@ func RetryWithBackoff[T any](ctx context.Context, operation func() (T, error), c
 			backoff = maxBackoff
 		}
 		jitter := time.Duration(rng.Int63n(int64(backoff)))
+		if config.DisableJitter {
+			jitter = backoff
+		}
 		tflog.Debug(ctx, "Retrying operation after backoff", map[string]any{
 			"attempt":      attempt + 1,
 			"max_attempts": config.MaxAttempts,
