@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -250,10 +251,22 @@ func (r *ZambdaResource) Create(ctx context.Context, req resource.CreateRequest,
 	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, *createdZambda.ID, plan.SourceChecksum.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
+		// Roll back Zambda create
+		err := r.client.Zambda.DeleteZambda(ctx, *createdZambda.ID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Deleting Zambda", err.Error())
+			return
+		}
 		return
 	}
 	if retrievedZambda == nil {
 		// Error already added to diagnostics in getZambdaAfterMutation
+		// Roll back Zambda create
+		err := r.client.Zambda.DeleteZambda(ctx, *createdZambda.ID)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Deleting Zambda", err.Error())
+			return
+		}
 		return
 	}
 
@@ -409,8 +422,9 @@ func (r *ZambdaResource) getZambdaAfterMutation(ctx context.Context, diags *diag
 		return retrievedZambda, nil
 	}, retry.RetryConfig{
 		BaseBackoff: retry.BaseBackoffDefault,
-		MaxBackoff:  16000,
-		MaxAttempts: 10,
+		MaxBackoff:  8 * time.Second,
+		MaxDuration: 2 * time.Minute,
+		MaxAttempts: retry.Disabled, // disable max attempts
 	})
 }
 
