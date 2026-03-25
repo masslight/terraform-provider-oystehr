@@ -200,6 +200,7 @@ func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateReques
 			"Error Updating Z3 Object",
 			"Could not update Z3 object: "+err.Error(),
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, Z3ObjectIdentityModel{Bucket: plan.Bucket, Key: plan.Key})...)
 		return
 	}
 
@@ -209,6 +210,7 @@ func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateReques
 			"Error Retrieving Z3 Object",
 			"Could not retrieve Z3 object: "+err.Error(),
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, Z3ObjectIdentityModel{Bucket: plan.Bucket, Key: plan.Key})...)
 		return
 	}
 

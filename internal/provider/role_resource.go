@@ -185,6 +185,7 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	updatedRole, err := r.client.Role.UpdateRole(ctx, state.ID.ValueString(), &role)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Role", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: state.ID})...)
 		return
 	}
 

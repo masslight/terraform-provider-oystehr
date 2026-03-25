@@ -182,6 +182,7 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 			"Name Change Not Allowed",
 			"The name of a Z3 bucket cannot be changed after creation. Please create a new bucket with the desired name.",
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, Z3BucketIdentityModel{Name: state.Name})...)
 		return
 	}
 	retZ3Bucket := Z3Bucket{

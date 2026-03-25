@@ -180,6 +180,7 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	updatedSecret, err := r.client.Secret.SetSecret(ctx, &secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Secret", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, SecretIdentityModel{Name: plan.Name})...)
 		return
 	}
 

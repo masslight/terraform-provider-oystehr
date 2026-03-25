@@ -178,6 +178,7 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	updatedProject, err := r.client.Project.UpdateProject(ctx, &updateParams)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Project Configuration", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: plan.ID})...)
 		return
 	}
 
