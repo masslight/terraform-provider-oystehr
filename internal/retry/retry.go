@@ -41,9 +41,6 @@ type RetryConfig struct {
 
 func RetryWithBackoff[T any](ctx context.Context, operation func() (T, error), config RetryConfig) (T, error) {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	baseBackoff := config.BaseBackoff
-	maxBackoff := config.MaxBackoff
-	maxDuration := config.MaxDuration
 	start := time.Now()
 
 	for attempt := range int(math.Max(float64(config.MaxAttempts), 1000)) {
@@ -57,19 +54,12 @@ func RetryWithBackoff[T any](ctx context.Context, operation func() (T, error), c
 			return zero, err
 		}
 		// If we have elapsed max duration, return the error
-		if config.MaxDuration > Disabled && time.Since(start) > maxDuration {
+		if config.MaxDuration > Disabled && time.Since(start) > config.MaxDuration {
 			var zero T
 			return zero, err
 		}
 		// Compute exponential backoff and apply full jitter
-		backoff := baseBackoff * (1 << attempt)
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
-		jitter := time.Duration(rng.Int63n(int64(backoff)))
-		if config.DisableJitter {
-			jitter = backoff
-		}
+		backoff, jitter := calculateBackoffAndJitter(rng, config, attempt)
 		tflog.Debug(ctx, "Retrying operation after backoff", map[string]any{
 			"attempt":      attempt + 1,
 			"max_attempts": config.MaxAttempts,
@@ -81,4 +71,19 @@ func RetryWithBackoff[T any](ctx context.Context, operation func() (T, error), c
 
 	var zero T
 	return zero, nil
+}
+
+func calculateBackoffAndJitter(rng *rand.Rand, config RetryConfig, attempt int) (backoff time.Duration, jitter time.Duration) {
+	defer func() {
+		if err := recover(); err != nil {
+			// panic, jitter too big
+			backoff = config.MaxBackoff
+			jitter = config.MaxBackoff
+		}
+	}()
+	backoff = min(config.BaseBackoff*(1<<attempt), config.MaxBackoff)
+	if config.DisableJitter {
+		return backoff, backoff
+	}
+	return backoff, time.Duration(rng.Int63n(int64(backoff)))
 }

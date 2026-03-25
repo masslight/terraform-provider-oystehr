@@ -2,6 +2,7 @@ package retry
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -111,4 +112,20 @@ func TestRetry(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+func TestCalculateJitter(t *testing.T) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	config := RetryConfig{
+		BaseBackoff:   500 * time.Millisecond,
+		MaxBackoff:    8 * time.Second,
+		DisableJitter: false,
+	}
+	for i := range 100 {
+		backoff, jitter := calculateBackoffAndJitter(rng, config, i)
+		assert.GreaterOrEqual(t, backoff, 0*time.Millisecond)
+		assert.LessOrEqual(t, backoff, config.MaxBackoff)
+		assert.GreaterOrEqual(t, jitter, 0*time.Millisecond)
+		assert.LessOrEqual(t, jitter, config.MaxBackoff)
+	}
 }
