@@ -257,6 +257,7 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	updatedM2M, err := r.client.M2M.UpdateM2M(ctx, state.ID.ValueString(), &m2m)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating M2M", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: state.ID})...)
 		return
 	}
 
@@ -265,14 +266,19 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		newSecret, err := r.client.M2M.RotateM2MSecret(ctx, state.ID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Rotating M2M Secret", err.Error())
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: state.ID})...)
 			return
 		}
 		clientSecret = newSecret
 	}
 
 	retM2M := convertClientM2MToM2M(ctx, updatedM2M, clientSecret, plan.ClientSecretVersion.ValueInt64())
+	retIdentity := IDIdentityModel{
+		ID: retM2M.ID,
+	}
 
-	resp.State.Set(ctx, retM2M)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retM2M)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *M2MResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

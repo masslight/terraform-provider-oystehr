@@ -178,12 +178,17 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	updatedProject, err := r.client.Project.UpdateProject(ctx, &updateParams)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Project Configuration", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: plan.ID})...)
 		return
 	}
 
 	retProject := clientProjectToProject(ctx, updatedProject)
+	retIdentity := IDIdentityModel{
+		ID: retProject.ID,
+	}
 
-	resp.State.Set(ctx, retProject)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retProject)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

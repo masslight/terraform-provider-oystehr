@@ -332,9 +332,12 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	zambda := convertZambdaToClientZambda(ctx, plan)
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	updatedZambda, err := r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &zambda)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Zambda", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
@@ -350,6 +353,7 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 				if err != nil {
 					resp.Diagnostics.AddError("Error Rolling Back Zambda Update", err.Error())
 				}
+				resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 				return
 			}
 		}
@@ -358,16 +362,22 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, *updatedZambda.ID, plan.SourceChecksum.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 	if retrievedZambda == nil {
 		// Error already added to diagnostics in getZambdaAfterMutation
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
 	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan.SourceChecksum.ValueString())
+	retIdentity := IDIdentityModel{
+		ID: retZambda.ID,
+	}
 
-	resp.State.Set(ctx, retZambda)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -180,10 +180,17 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	updatedSecret, err := r.client.Secret.SetSecret(ctx, &secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Secret", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, SecretIdentityModel{Name: plan.Name})...)
 		return
 	}
 
-	resp.State.Set(ctx, convertClientSecretToSecret(ctx, updatedSecret))
+	retSecret := convertClientSecretToSecret(ctx, updatedSecret)
+	retIdentity := SecretIdentityModel{
+		Name: retSecret.Name,
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retSecret)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

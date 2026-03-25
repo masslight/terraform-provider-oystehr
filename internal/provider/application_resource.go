@@ -304,12 +304,17 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 	updatedApp, err := r.client.Application.UpdateApplication(ctx, identity.ID.ValueString(), &app)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Application", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 		return
 	}
 
 	retApp := clientAppToApplication(ctx, updatedApp)
+	retIdentity := IDIdentityModel{
+		ID: retApp.ID,
+	}
 
-	resp.State.Set(ctx, retApp)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retApp)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
