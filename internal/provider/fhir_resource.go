@@ -295,9 +295,26 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	returnedResource, err := r.client.Fhir.GetResource(ctx, state.Type.ValueString(), state.ID.ValueString())
+	// Prefer identity values when available, fall back to state.
+	resourceID := state.ID.ValueString()
+	resourceType := state.Type.ValueString()
+	if !identity.ID.IsNull() && identity.ID.ValueString() != "" {
+		resourceID = identity.ID.ValueString()
+	}
+	if !identity.Type.IsNull() && identity.Type.ValueString() != "" {
+		resourceType = identity.Type.ValueString()
+	}
+
+	returnedResource, err := r.client.Fhir.GetResource(ctx, resourceType, resourceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 410") {
+			// Resource was deleted on the server. Set identity from what we know
+			// before removing, so the framework does not report a missing identity.
+			removedIdentity := FhirResourceIdentityModel{
+				ID:   types.StringValue(resourceID),
+				Type: types.StringValue(resourceType),
+			}
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, removedIdentity)...)
 			resp.State.RemoveResource(ctx)
 			return
 		}
