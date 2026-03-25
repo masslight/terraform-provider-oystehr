@@ -183,7 +183,13 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	resp.State.Set(ctx, convertClientSecretToSecret(ctx, updatedSecret))
+	retSecret := convertClientSecretToSecret(ctx, updatedSecret)
+	retIdentity := SecretIdentityModel{
+		Name: retSecret.Name,
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retSecret)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

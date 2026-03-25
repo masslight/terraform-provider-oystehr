@@ -182,8 +182,12 @@ func (r *ProjectConfigResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	retProject := clientProjectToProject(ctx, updatedProject)
+	retIdentity := IDIdentityModel{
+		ID: retProject.ID,
+	}
 
-	resp.State.Set(ctx, retProject)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retProject)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ProjectConfigResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -189,7 +189,12 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 		Name:          state.Name,
 		RemovalPolicy: plan.RemovalPolicy,
 	}
+	retIdentity := Z3BucketIdentityModel{
+		Name: retZ3Bucket.Name,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

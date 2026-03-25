@@ -189,8 +189,12 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	retRole := convertClientRoleToRole(ctx, updatedRole)
+	retIdentity := IDIdentityModel{
+		ID: retRole.ID,
+	}
 
-	resp.State.Set(ctx, retRole)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retRole)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

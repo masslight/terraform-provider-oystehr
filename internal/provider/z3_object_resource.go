@@ -213,7 +213,13 @@ func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	result := convertClientObjectToZ3Object(returnedObject, plan.Bucket.ValueString(), plan.Source.ValueString(), plan.SourceChecksum.ValueString())
+	retIdentity := Z3ObjectIdentityModel{
+		Bucket: plan.Bucket,
+		Key:    plan.Key,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, result)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3ObjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -366,7 +366,13 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
+	retIdentity := FhirResourceIdentityModel{
+		ID:   resource.ID,
+		Type: resource.Type,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

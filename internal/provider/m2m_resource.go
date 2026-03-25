@@ -271,8 +271,12 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	retM2M := convertClientM2MToM2M(ctx, updatedM2M, clientSecret, plan.ClientSecretVersion.ValueInt64())
+	retIdentity := IDIdentityModel{
+		ID: retM2M.ID,
+	}
 
-	resp.State.Set(ctx, retM2M)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retM2M)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *M2MResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

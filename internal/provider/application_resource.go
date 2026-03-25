@@ -308,8 +308,12 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	retApp := clientAppToApplication(ctx, updatedApp)
+	retIdentity := IDIdentityModel{
+		ID: retApp.ID,
+	}
 
-	resp.State.Set(ctx, retApp)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retApp)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ApplicationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

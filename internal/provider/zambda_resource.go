@@ -366,8 +366,12 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	retZambda := convertClientZambdaToZambda(ctx, retrievedZambda, plan.SourceChecksum.ValueString())
+	retIdentity := IDIdentityModel{
+		ID: retZambda.ID,
+	}
 
-	resp.State.Set(ctx, retZambda)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
