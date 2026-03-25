@@ -423,7 +423,7 @@ func (r *ZambdaResource) getZambdaAfterMutation(ctx context.Context, diags *diag
 	}, retry.RetryConfig{
 		BaseBackoff: retry.BaseBackoffDefault,
 		MaxBackoff:  8 * time.Second,
-		MaxDuration: 2 * time.Minute,
+		MaxDuration: 5 * time.Minute,
 		MaxAttempts: retry.Disabled, // disable max attempts
 	})
 }
