@@ -164,11 +164,13 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	stateIdentity := Z3ObjectIdentityModel{Bucket: state.Bucket, Key: state.Key}
+
 	object, err := r.client.Z3.ListObject(ctx, state.Bucket.ValueString(), state.Key.ValueString())
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
-			resp.Diagnostics.Append(resp.Identity.Set(ctx, Z3ObjectIdentityModel{Bucket: state.Bucket, Key: state.Key})...)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError(
