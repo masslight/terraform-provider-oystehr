@@ -269,6 +269,7 @@ func (r *ApplicationResource) Read(ctx context.Context, req resource.ReadRequest
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: state.ID})...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading Application", err.Error())
@@ -301,10 +302,12 @@ func (r *ApplicationResource) Update(ctx context.Context, req resource.UpdateReq
 
 	app := applicationToClientApp(plan)
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	updatedApp, err := r.client.Application.UpdateApplication(ctx, identity.ID.ValueString(), &app)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Application", err.Error())
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 

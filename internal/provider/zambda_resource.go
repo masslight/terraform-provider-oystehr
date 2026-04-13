@@ -303,6 +303,7 @@ func (r *ZambdaResource) Read(ctx context.Context, req resource.ReadRequest, res
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, IDIdentityModel{ID: state.ID})...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading Zambda", err.Error())

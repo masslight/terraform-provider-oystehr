@@ -299,6 +299,7 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 410") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, FhirResourceIdentityModel{ID: state.ID, Type: state.Type})...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading FHIR Resource", err.Error())

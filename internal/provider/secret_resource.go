@@ -151,6 +151,7 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, SecretIdentityModel{Name: state.Name})...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading Secret", err.Error())
@@ -177,10 +178,12 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	secret := convertSecretToClientSecret(ctx, plan)
 
+	stateIdentity := SecretIdentityModel{Name: plan.Name}
+
 	updatedSecret, err := r.client.Secret.SetSecret(ctx, &secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Secret", err.Error())
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, SecretIdentityModel{Name: plan.Name})...)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
