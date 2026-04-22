@@ -295,10 +295,13 @@ func (r *FhirResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	stateIdentity := FhirResourceIdentityModel{ID: state.ID, Type: state.Type}
+
 	returnedResource, err := r.client.Fhir.GetResource(ctx, state.Type.ValueString(), state.ID.ValueString())
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 410") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading FHIR Resource", err.Error())
@@ -335,6 +338,11 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	stateIdentity := FhirResourceIdentityModel{
+		ID:   state.ID,
+		Type: state.Type,
+	}
+
 	var versionID string
 	versionIDValue, ok := state.Meta.Attributes()["version_id"]
 	if ok && !versionIDValue.IsNull() {
@@ -346,12 +354,14 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		updatedResource, err := r.client.Fhir.UpdateResource(ctx, state.Type.ValueString(), state.ID.ValueString(), versionID, resourceData)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Updating FHIR Resource", err.Error())
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 
 		convertedResource, diags := convertRawResourceToFhirResource(ctx, updatedResource, plan)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resource = convertedResource
@@ -366,7 +376,13 @@ func (r *FhirResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
+	retIdentity := FhirResourceIdentityModel{
+		ID:   resource.ID,
+		Type: resource.Type,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, resource)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *FhirResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

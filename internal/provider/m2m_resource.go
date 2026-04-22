@@ -221,10 +221,13 @@ func (r *M2MResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		id = state.ID.ValueString()
 	}
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	m2m, err := r.client.M2M.GetM2M(ctx, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading M2M", err.Error())
@@ -254,9 +257,12 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 
 	m2m := convertM2MToClientM2M(ctx, plan)
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	updatedM2M, err := r.client.M2M.UpdateM2M(ctx, state.ID.ValueString(), &m2m)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating M2M", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
@@ -265,14 +271,19 @@ func (r *M2MResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		newSecret, err := r.client.M2M.RotateM2MSecret(ctx, state.ID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Error Rotating M2M Secret", err.Error())
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		clientSecret = newSecret
 	}
 
 	retM2M := convertClientM2MToM2M(ctx, updatedM2M, clientSecret, plan.ClientSecretVersion.ValueInt64())
+	retIdentity := IDIdentityModel{
+		ID: retM2M.ID,
+	}
 
-	resp.State.Set(ctx, retM2M)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retM2M)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *M2MResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

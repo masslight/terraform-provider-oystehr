@@ -149,10 +149,13 @@ func (r *RoleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		id = state.ID.ValueString()
 	}
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	role, err := r.client.Role.GetRole(ctx, id)
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading Role", err.Error())
@@ -182,15 +185,22 @@ func (r *RoleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	role := convertRoleToClientRole(ctx, plan)
 
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
 	updatedRole, err := r.client.Role.UpdateRole(ctx, state.ID.ValueString(), &role)
 	if err != nil {
 		resp.Diagnostics.AddError("Error Updating Role", err.Error())
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
 	retRole := convertClientRoleToRole(ctx, updatedRole)
+	retIdentity := IDIdentityModel{
+		ID: retRole.ID,
+	}
 
-	resp.State.Set(ctx, retRole)
+	resp.Diagnostics.Append(resp.State.Set(ctx, retRole)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *RoleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

@@ -150,10 +150,13 @@ func (r *Z3BucketResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	stateIdentity := Z3BucketIdentityModel{Name: state.Name}
+
 	clientBucket, err := r.client.Z3.GetBucket(ctx, state.Name.ValueString())
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError("Error Reading Z3 Bucket", err.Error())
@@ -177,11 +180,14 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	stateIdentity := Z3BucketIdentityModel{Name: state.Name}
+
 	if state.Name.ValueString() != plan.Name.ValueString() {
 		resp.Diagnostics.AddError(
 			"Name Change Not Allowed",
 			"The name of a Z3 bucket cannot be changed after creation. Please create a new bucket with the desired name.",
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 	retZ3Bucket := Z3Bucket{
@@ -189,7 +195,12 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 		Name:          state.Name,
 		RemovalPolicy: plan.RemovalPolicy,
 	}
+	retIdentity := Z3BucketIdentityModel{
+		Name: retZ3Bucket.Name,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, retZ3Bucket)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

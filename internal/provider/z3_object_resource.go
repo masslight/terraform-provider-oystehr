@@ -164,10 +164,13 @@ func (r *Z3ObjectResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	stateIdentity := Z3ObjectIdentityModel{Bucket: state.Bucket, Key: state.Key}
+
 	object, err := r.client.Z3.ListObject(ctx, state.Bucket.ValueString(), state.Key.ValueString())
 	if err != nil {
 		if strings.Contains(err.Error(), "unexpected status code: 404") {
 			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
 		}
 		resp.Diagnostics.AddError(
@@ -194,12 +197,15 @@ func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
+	stateIdentity := Z3ObjectIdentityModel{Bucket: plan.Bucket, Key: plan.Key}
+
 	err := r.client.Z3.UploadObject(ctx, plan.Bucket.ValueString(), plan.Key.ValueString(), plan.Source.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Z3 Object",
 			"Could not update Z3 object: "+err.Error(),
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
@@ -209,11 +215,18 @@ func (r *Z3ObjectResource) Update(ctx context.Context, req resource.UpdateReques
 			"Error Retrieving Z3 Object",
 			"Could not retrieve Z3 object: "+err.Error(),
 		)
+		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 		return
 	}
 
 	result := convertClientObjectToZ3Object(returnedObject, plan.Bucket.ValueString(), plan.Source.ValueString(), plan.SourceChecksum.ValueString())
+	retIdentity := Z3ObjectIdentityModel{
+		Bucket: plan.Bucket,
+		Key:    plan.Key,
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, result)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
 
 func (r *Z3ObjectResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
