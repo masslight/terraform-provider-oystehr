@@ -334,27 +334,32 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	zambda := convertZambdaToClientZambda(ctx, plan)
+	functionFieldsChanged := zambdaFunctionFieldsChanged(plan, state)
 
 	stateIdentity := IDIdentityModel{ID: state.ID}
 
-	updatedZambda, err := r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &zambda)
-	if err != nil {
-		resp.Diagnostics.AddError("Error Updating Zambda", err.Error())
-		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
-		return
+	if functionFieldsChanged {
+		_, err := r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &zambda)
+		if err != nil {
+			resp.Diagnostics.AddError("Error Updating Zambda", err.Error())
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
+			return
+		}
 	}
 
 	if config.Source.ValueString() != "" {
 		// Different checksum, upload new source and use calculated checksum
 		if plan.SourceChecksum.ValueString() != state.SourceChecksum.ValueString() {
-			err = r.client.Zambda.UploadZambdaSource(ctx, *updatedZambda.ID, config.Source.ValueString())
+			err := r.client.Zambda.UploadZambdaSource(ctx, state.ID.ValueString(), config.Source.ValueString())
 			if err != nil {
 				resp.Diagnostics.AddError("Error Uploading Zambda Source", err.Error())
-				// Roll back update
-				previousStateZambda := convertZambdaToClientZambda(ctx, state)
-				_, err = r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &previousStateZambda)
-				if err != nil {
-					resp.Diagnostics.AddError("Error Rolling Back Zambda Update", err.Error())
+				if functionFieldsChanged {
+					// Roll back update when function fields were changed before source upload.
+					previousStateZambda := convertZambdaToClientZambda(ctx, state)
+					_, err = r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &previousStateZambda)
+					if err != nil {
+						resp.Diagnostics.AddError("Error Rolling Back Zambda Update", err.Error())
+					}
 				}
 				resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 				return
@@ -362,7 +367,7 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		}
 	}
 
-	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, *updatedZambda.ID, plan.SourceChecksum.ValueString())
+	retrievedZambda, err := r.getZambdaAfterMutation(ctx, &resp.Diagnostics, state.ID.ValueString(), plan.SourceChecksum.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error Retrieving Created Zambda", err.Error())
 		resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
@@ -381,6 +386,11 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, retZambda)...)
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
+}
+
+func zambdaFunctionFieldsChanged(plan, state Zambda) bool {
+	// TODO: implement field-by-field diff for function metadata updates.
+	return true
 }
 
 func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
