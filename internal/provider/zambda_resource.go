@@ -389,8 +389,12 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 func zambdaFunctionFieldsChanged(plan, state Zambda) bool {
-	// TODO: implement field-by-field diff for function metadata updates.
-	return true
+	return !plan.Name.Equal(state.Name) ||
+		plan.Runtime.ValueString() != state.Runtime.ValueString() ||
+		!plan.MemorySize.Equal(state.MemorySize) ||
+		!plan.Timeout.Equal(state.Timeout) ||
+		!plan.TriggerMethod.Equal(state.TriggerMethod) ||
+		!plan.Schedule.Equal(state.Schedule)
 }
 
 func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
