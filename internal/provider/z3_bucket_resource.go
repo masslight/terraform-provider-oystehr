@@ -221,13 +221,61 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	if state.RemovalPolicy.ValueString() == "delete" {
-		err := r.client.Z3.DeleteBucket(ctx, state.Name.ValueString())
+	if state.RemovalPolicy.ValueString() != "delete" {
+		return
+	}
+
+	bucketName := state.Name.ValueString()
+	forceDestroy := state.ForceDestroy.ValueBool()
+
+	if forceDestroy {
+		_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
 		if err != nil {
-			resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
+			if strings.Contains(err.Error(), "unexpected status code: 404") {
+				// Idempotent destroy: bucket already removed.
+				return
+			}
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", err.Error())
 			return
 		}
 	}
+
+	err := r.client.Z3.DeleteBucket(ctx, bucketName)
+	if err == nil {
+		return
+	}
+
+	if strings.Contains(err.Error(), "unexpected status code: 404") {
+		// Idempotent destroy: bucket already removed.
+		return
+	}
+
+	if forceDestroy && strings.Contains(err.Error(), "unexpected status code: 400") {
+		// Handle race where new objects were written between empty and bucket delete.
+		_, emptyErr := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+		if emptyErr != nil {
+			if strings.Contains(emptyErr.Error(), "unexpected status code: 404") {
+				return
+			}
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", emptyErr.Error())
+			return
+		}
+
+		err = r.client.Z3.DeleteBucket(ctx, bucketName)
+		if err == nil || strings.Contains(err.Error(), "unexpected status code: 404") {
+			return
+		}
+	}
+
+	if !forceDestroy && strings.Contains(err.Error(), "unexpected status code: 400") {
+		resp.Diagnostics.AddError(
+			"Error Deleting Z3 Bucket",
+			err.Error()+". Bucket may contain objects; set force_destroy = true to delete bucket contents before deleting the bucket.",
+		)
+		return
+	}
+
+	resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
 }
 
 func (r *Z3BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
