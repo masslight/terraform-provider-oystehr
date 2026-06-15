@@ -333,12 +333,12 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	zambda := convertZambdaToClientZambda(ctx, plan)
 	functionFieldsChanged := zambdaFunctionFieldsChanged(plan, state)
 
 	stateIdentity := IDIdentityModel{ID: state.ID}
 
 	if functionFieldsChanged {
+		zambda := convertZambdaToClientZambda(ctx, plan)
 		_, err := r.client.Zambda.UpdateZambda(ctx, state.ID.ValueString(), &zambda)
 		if err != nil {
 			resp.Diagnostics.AddError("Error Updating Zambda", err.Error())
@@ -390,7 +390,7 @@ func (r *ZambdaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 func zambdaFunctionFieldsChanged(plan, state Zambda) bool {
 	return !plan.Name.Equal(state.Name) ||
-		plan.Runtime.ValueString() != state.Runtime.ValueString() ||
+		!plan.Runtime.Equal(state.Runtime) ||
 		!plan.MemorySize.Equal(state.MemorySize) ||
 		!plan.Timeout.Equal(state.Timeout) ||
 		!plan.TriggerMethod.Equal(state.TriggerMethod) ||
