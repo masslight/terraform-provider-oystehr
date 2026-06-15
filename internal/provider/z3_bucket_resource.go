@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -15,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
+	"github.com/masslight/terraform-provider-oystehr/internal/retry"
 )
 
 type Z3BucketIdentityModel struct {
@@ -230,7 +232,10 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 	forceDestroy := state.ForceDestroy.ValueBool()
 
 	if forceDestroy {
-		_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+		err := retryZ3OnServerErrors(ctx, func() error {
+			_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+			return err
+		})
 		if err != nil {
 			if isZ3StatusCodeError(err, 404) {
 				// Idempotent destroy: bucket already removed.
@@ -245,7 +250,9 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		}
 	}
 
-	err := r.client.Z3.DeleteBucket(ctx, bucketName)
+	err := retryZ3OnServerErrors(ctx, func() error {
+		return r.client.Z3.DeleteBucket(ctx, bucketName)
+	})
 	if err == nil {
 		return
 	}
@@ -261,7 +268,10 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	if forceDestroy && isZ3StatusCodeError(err, 400) {
 		// Handle race where new objects were written between empty and bucket delete.
-		_, emptyErr := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+		emptyErr := retryZ3OnServerErrors(ctx, func() error {
+			_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+			return err
+		})
 		if emptyErr != nil {
 			if isZ3StatusCodeError(emptyErr, 404) {
 				return
@@ -274,7 +284,9 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 			return
 		}
 
-		err = r.client.Z3.DeleteBucket(ctx, bucketName)
+		err = retryZ3OnServerErrors(ctx, func() error {
+			return r.client.Z3.DeleteBucket(ctx, bucketName)
+		})
 		if err == nil || isZ3StatusCodeError(err, 404) {
 			return
 		}
@@ -308,6 +320,35 @@ func isZ3StatusCodeError(err error, code int) bool {
 func isZ3ServerStatusError(err error) bool {
 	statusCode, ok := extractZ3StatusCode(err)
 	return ok && statusCode >= 500 && statusCode <= 599
+}
+
+func retryZ3OnServerErrors(ctx context.Context, operation func() error) error {
+	var nonRetriableErr error
+
+	_, err := retry.RetryWithBackoff(ctx, func() (struct{}, error) {
+		err := operation()
+		if err == nil {
+			return struct{}{}, nil
+		}
+
+		if isZ3ServerStatusError(err) {
+			return struct{}{}, err
+		}
+
+		nonRetriableErr = err
+		return struct{}{}, nil
+	}, retry.RetryConfig{
+		BaseBackoff: 250 * time.Millisecond,
+		MaxBackoff:  3 * time.Second,
+		MaxDuration: retry.Disabled,
+		MaxAttempts: 3,
+	})
+
+	if nonRetriableErr != nil {
+		return nonRetriableErr
+	}
+
+	return err
 }
 
 func extractZ3StatusCode(err error) (int, bool) {
