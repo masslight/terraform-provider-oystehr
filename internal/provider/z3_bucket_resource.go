@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -231,8 +232,12 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 	if forceDestroy {
 		_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
 		if err != nil {
-			if strings.Contains(err.Error(), "unexpected status code: 404") {
+			if isZ3StatusCodeError(err, 404) {
 				// Idempotent destroy: bucket already removed.
+				return
+			}
+			if isZ3StatusCodeError(err, 403) {
+				resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", err.Error()+". Missing permission to delete objects in this bucket.")
 				return
 			}
 			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", err.Error())
@@ -245,16 +250,24 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	if strings.Contains(err.Error(), "unexpected status code: 404") {
+	if isZ3StatusCodeError(err, 404) {
 		// Idempotent destroy: bucket already removed.
 		return
 	}
+	if isZ3StatusCodeError(err, 403) {
+		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Missing permission to delete this bucket.")
+		return
+	}
 
-	if forceDestroy && strings.Contains(err.Error(), "unexpected status code: 400") {
+	if forceDestroy && isZ3StatusCodeError(err, 400) {
 		// Handle race where new objects were written between empty and bucket delete.
 		_, emptyErr := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
 		if emptyErr != nil {
-			if strings.Contains(emptyErr.Error(), "unexpected status code: 404") {
+			if isZ3StatusCodeError(emptyErr, 404) {
+				return
+			}
+			if isZ3StatusCodeError(emptyErr, 403) {
+				resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", emptyErr.Error()+". Missing permission to delete objects in this bucket.")
 				return
 			}
 			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", emptyErr.Error())
@@ -262,12 +275,16 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		}
 
 		err = r.client.Z3.DeleteBucket(ctx, bucketName)
-		if err == nil || strings.Contains(err.Error(), "unexpected status code: 404") {
+		if err == nil || isZ3StatusCodeError(err, 404) {
+			return
+		}
+		if isZ3StatusCodeError(err, 403) {
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Missing permission to delete this bucket.")
 			return
 		}
 	}
 
-	if !forceDestroy && strings.Contains(err.Error(), "unexpected status code: 400") {
+	if !forceDestroy && isZ3StatusCodeError(err, 400) {
 		resp.Diagnostics.AddError(
 			"Error Deleting Z3 Bucket",
 			err.Error()+". Bucket may contain objects; set force_destroy = true to delete bucket contents before deleting the bucket.",
@@ -275,7 +292,51 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
+	if isZ3ServerStatusError(err) {
+		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Z3 service returned a server error; retry may succeed.")
+		return
+	}
+
 	resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
+}
+
+func isZ3StatusCodeError(err error, code int) bool {
+	statusCode, ok := extractZ3StatusCode(err)
+	return ok && statusCode == code
+}
+
+func isZ3ServerStatusError(err error) bool {
+	statusCode, ok := extractZ3StatusCode(err)
+	return ok && statusCode >= 500 && statusCode <= 599
+}
+
+func extractZ3StatusCode(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	const marker = "unexpected status code: "
+	errMessage := err.Error()
+	start := strings.Index(errMessage, marker)
+	if start == -1 {
+		return 0, false
+	}
+
+	start += len(marker)
+	end := start
+	for end < len(errMessage) && errMessage[end] >= '0' && errMessage[end] <= '9' {
+		end++
+	}
+	if end == start {
+		return 0, false
+	}
+
+	statusCode, parseErr := strconv.Atoi(errMessage[start:end])
+	if parseErr != nil {
+		return 0, false
+	}
+
+	return statusCode, true
 }
 
 func (r *Z3BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
