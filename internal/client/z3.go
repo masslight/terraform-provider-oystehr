@@ -23,7 +23,7 @@ type DeleteBucketObjectsResponse struct {
 	DeletedCount int `json:"deletedCount"`
 }
 
-const (
+var (
 	z3BaseURL = "https://z3-api.zapehr.com/v1"
 )
 
