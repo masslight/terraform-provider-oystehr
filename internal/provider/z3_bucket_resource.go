@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -23,6 +24,7 @@ type Z3Bucket struct {
 	ID            types.String `tfsdk:"id"`
 	Name          types.String `tfsdk:"name"`
 	RemovalPolicy types.String `tfsdk:"removal_policy"`
+	ForceDestroy  types.Bool   `tfsdk:"force_destroy"`
 }
 
 func convertZ3BucketToClientBucket(bucket Z3Bucket) client.Bucket {
@@ -37,6 +39,7 @@ func convertClientBucketToZ3Bucket(clientBucket *client.Bucket, templ Z3Bucket) 
 		ID:            stringPointerToTfString(clientBucket.ID),
 		Name:          stringPointerToTfString(clientBucket.Name),
 		RemovalPolicy: templ.RemovalPolicy,
+		ForceDestroy:  templ.ForceDestroy,
 	}
 }
 
@@ -79,6 +82,12 @@ func (r *Z3BucketResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:    true,
 				Description: "The removal policy for the Z3 bucket. Valid values are 'delete' and 'retain'. Defaults to 'delete'.",
 				Default:     stringdefault.StaticString("delete"),
+			},
+			"force_destroy": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether to delete all objects in the bucket before deleting the bucket. Defaults to false.",
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -194,6 +203,7 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 		ID:            state.ID,
 		Name:          state.Name,
 		RemovalPolicy: plan.RemovalPolicy,
+		ForceDestroy:  plan.ForceDestroy,
 	}
 	retIdentity := Z3BucketIdentityModel{
 		Name: retZ3Bucket.Name,
