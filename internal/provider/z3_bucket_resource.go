@@ -2,17 +2,21 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/identityschema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
+	"github.com/masslight/terraform-provider-oystehr/internal/retry"
 )
 
 type Z3BucketIdentityModel struct {
@@ -23,6 +27,7 @@ type Z3Bucket struct {
 	ID            types.String `tfsdk:"id"`
 	Name          types.String `tfsdk:"name"`
 	RemovalPolicy types.String `tfsdk:"removal_policy"`
+	ForceDestroy  types.Bool   `tfsdk:"force_destroy"`
 }
 
 func convertZ3BucketToClientBucket(bucket Z3Bucket) client.Bucket {
@@ -37,6 +42,7 @@ func convertClientBucketToZ3Bucket(clientBucket *client.Bucket, templ Z3Bucket) 
 		ID:            stringPointerToTfString(clientBucket.ID),
 		Name:          stringPointerToTfString(clientBucket.Name),
 		RemovalPolicy: templ.RemovalPolicy,
+		ForceDestroy:  templ.ForceDestroy,
 	}
 }
 
@@ -79,6 +85,12 @@ func (r *Z3BucketResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:    true,
 				Description: "The removal policy for the Z3 bucket. Valid values are 'delete' and 'retain'. Defaults to 'delete'.",
 				Default:     stringdefault.StaticString("delete"),
+			},
+			"force_destroy": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether to delete all objects in the bucket before deleting the bucket. Defaults to false.",
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
@@ -194,6 +206,7 @@ func (r *Z3BucketResource) Update(ctx context.Context, req resource.UpdateReques
 		ID:            state.ID,
 		Name:          state.Name,
 		RemovalPolicy: plan.RemovalPolicy,
+		ForceDestroy:  plan.ForceDestroy,
 	}
 	retIdentity := Z3BucketIdentityModel{
 		Name: retZ3Bucket.Name,
@@ -211,13 +224,160 @@ func (r *Z3BucketResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	if state.RemovalPolicy.ValueString() == "delete" {
-		err := r.client.Z3.DeleteBucket(ctx, state.Name.ValueString())
+	if state.RemovalPolicy.ValueString() != "delete" {
+		return
+	}
+
+	bucketName := state.Name.ValueString()
+	forceDestroy := state.ForceDestroy.ValueBool()
+
+	if forceDestroy {
+		err := retryZ3OnServerErrors(ctx, func() error {
+			_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+			return err
+		})
 		if err != nil {
-			resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
+			if isZ3StatusCodeError(err, 404) {
+				// Idempotent destroy: bucket already removed.
+				return
+			}
+			if isZ3StatusCodeError(err, 403) {
+				resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", err.Error()+". Missing permission to delete objects in this bucket.")
+				return
+			}
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", err.Error())
 			return
 		}
 	}
+
+	err := retryZ3OnServerErrors(ctx, func() error {
+		return r.client.Z3.DeleteBucket(ctx, bucketName)
+	})
+	if err == nil {
+		return
+	}
+
+	if isZ3StatusCodeError(err, 404) {
+		// Idempotent destroy: bucket already removed.
+		return
+	}
+	if isZ3StatusCodeError(err, 403) {
+		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Missing permission to delete this bucket.")
+		return
+	}
+
+	if forceDestroy && isZ3StatusCodeError(err, 400) {
+		// Handle race where new objects were written between empty and bucket delete.
+		emptyErr := retryZ3OnServerErrors(ctx, func() error {
+			_, err := r.client.Z3.DeleteBucketObjects(ctx, bucketName)
+			return err
+		})
+		if emptyErr != nil {
+			if isZ3StatusCodeError(emptyErr, 404) {
+				return
+			}
+			if isZ3StatusCodeError(emptyErr, 403) {
+				resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", emptyErr.Error()+". Missing permission to delete objects in this bucket.")
+				return
+			}
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket Objects", emptyErr.Error())
+			return
+		}
+
+		err = retryZ3OnServerErrors(ctx, func() error {
+			return r.client.Z3.DeleteBucket(ctx, bucketName)
+		})
+		if err == nil || isZ3StatusCodeError(err, 404) {
+			return
+		}
+		if isZ3StatusCodeError(err, 403) {
+			resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Missing permission to delete this bucket.")
+			return
+		}
+	}
+
+	if !forceDestroy && isZ3StatusCodeError(err, 400) {
+		resp.Diagnostics.AddError(
+			"Error Deleting Z3 Bucket",
+			err.Error()+". Bucket may contain objects; set force_destroy = true to delete bucket contents before deleting the bucket.",
+		)
+		return
+	}
+
+	if isZ3ServerStatusError(err) {
+		resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error()+". Z3 service returned a server error; retry may succeed.")
+		return
+	}
+
+	resp.Diagnostics.AddError("Error Deleting Z3 Bucket", err.Error())
+}
+
+func isZ3StatusCodeError(err error, code int) bool {
+	statusCode, ok := extractZ3StatusCode(err)
+	return ok && statusCode == code
+}
+
+func isZ3ServerStatusError(err error) bool {
+	statusCode, ok := extractZ3StatusCode(err)
+	return ok && statusCode >= 500 && statusCode <= 599
+}
+
+func retryZ3OnServerErrors(ctx context.Context, operation func() error) error {
+	var nonRetriableErr error
+
+	_, err := retry.RetryWithBackoff(ctx, func() (struct{}, error) {
+		err := operation()
+		if err == nil {
+			return struct{}{}, nil
+		}
+
+		if isZ3ServerStatusError(err) {
+			return struct{}{}, err
+		}
+
+		nonRetriableErr = err
+		return struct{}{}, nil
+	}, retry.RetryConfig{
+		BaseBackoff: 250 * time.Millisecond,
+		MaxBackoff:  3 * time.Second,
+		MaxDuration: retry.Disabled,
+		MaxAttempts: 3,
+	})
+
+	if nonRetriableErr != nil {
+		return nonRetriableErr
+	}
+
+	return err
+}
+
+func extractZ3StatusCode(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	const marker = "unexpected status code: "
+	errMessage := err.Error()
+	start := strings.Index(errMessage, marker)
+	if start == -1 {
+		return 0, false
+	}
+
+	start += len(marker)
+	end := start
+	for end < len(errMessage) && errMessage[end] >= '0' && errMessage[end] <= '9' {
+		end++
+	}
+	if end == start {
+		return 0, false
+	}
+
+	statusCode, parseErr := strconv.Atoi(errMessage[start:end])
+	if parseErr != nil {
+		return 0, false
+	}
+
+	return statusCode, true
 }
 
 func (r *Z3BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

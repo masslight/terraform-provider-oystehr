@@ -8,6 +8,10 @@ description: |-
 
 # oystehr_z3_bucket (Resource)
 
+When `removal_policy = "delete"` and `force_destroy = true`, the provider will attempt to recursively delete all objects in the bucket before deleting the bucket itself.
+
+~> Warning: `force_destroy = true` is destructive and permanently removes bucket contents.
+
 
 
 
@@ -21,6 +25,7 @@ description: |-
 
 ### Optional
 
+- `force_destroy` (Boolean) Whether to delete all objects in the bucket before deleting the bucket. Defaults to `false`.
 - `removal_policy` (String) The removal policy for the Z3 bucket. Valid values are 'delete' and 'retain'. Defaults to 'delete'.
 
 ### Read-Only

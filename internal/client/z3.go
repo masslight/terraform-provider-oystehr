@@ -19,7 +19,11 @@ type Object struct {
 	LastModified *string `json:"lastModified"`
 }
 
-const (
+type DeleteBucketObjectsResponse struct {
+	DeletedCount int `json:"deletedCount"`
+}
+
+var (
 	z3BaseURL = "https://z3-api.zapehr.com/v1"
 )
 
@@ -82,6 +86,22 @@ func (c *z3Client) DeleteBucket(ctx context.Context, bucketName string) error {
 	}
 
 	return nil
+}
+
+func (c *z3Client) DeleteBucketObjects(ctx context.Context, bucketName string) (*DeleteBucketObjectsResponse, error) {
+	url := fmt.Sprintf("%s/%s/objects", z3BaseURL, bucketName)
+
+	responseBody, err := request(ctx, c.config, http.MethodDelete, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete Bucket objects: %w", err)
+	}
+
+	var deleteResponse DeleteBucketObjectsResponse
+	if err := json.Unmarshal(responseBody, &deleteResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &deleteResponse, nil
 }
 
 func (c *z3Client) ListObject(ctx context.Context, bucketName, objectKey string) (*Object, error) {
