@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -185,4 +186,47 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
+}
+
+func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state User
+	var identity IDIdentityModel
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if !req.Identity.Raw.IsNull() {
+		resp.Diagnostics.Append(req.Identity.Get(ctx, &identity)...)
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var id string
+	if !identity.ID.IsNull() {
+		id = identity.ID.ValueString()
+	} else {
+		id = state.ID.ValueString()
+	}
+
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
+	user, err := r.client.User.GetUser(ctx, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "unexpected status code: 404") {
+			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
+			return
+		}
+		resp.Diagnostics.AddError("Error Reading User", err.Error())
+		return
+	}
+
+	// Map metadata only; never read the password back from the API.
+	retUser := state
+	retUser.ID = stringPointerToTfString(user.ID)
+	retUser.Email = stringPointerToTfString(user.Email)
+	retIdentity := IDIdentityModel{ID: retUser.ID}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
