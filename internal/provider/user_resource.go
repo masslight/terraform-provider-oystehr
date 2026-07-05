@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
@@ -25,6 +26,11 @@ type User struct {
 	PasswordVersion types.Int64  `tfsdk:"password_version"`
 }
 
+var _ resource.Resource = &UserResource{}
+var _ resource.ResourceWithConfigure = &UserResource{}
+var _ resource.ResourceWithIdentity = &UserResource{}
+var _ resource.ResourceWithImportState = &UserResource{}
+
 type UserResource struct {
 	client *client.Client
 }
@@ -35,6 +41,31 @@ func NewUserResource() resource.Resource {
 
 func (r *UserResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = "oystehr_user"
+}
+
+func (*UserResource) IdentitySchema(_ context.Context, _ resource.IdentitySchemaRequest, resp *resource.IdentitySchemaResponse) {
+	resp.IdentitySchema = idIdentitySchema
+}
+
+func (r *UserResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*client.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Provider Data Type",
+			"Expected *client.Client but got a different type.",
+		)
+		return
+	}
+
+	r.client = client
+}
+
+func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughWithIdentity(ctx, path.Root("id"), path.Root("id"), req, resp)
 }
 
 func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
