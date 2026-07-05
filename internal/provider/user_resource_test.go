@@ -85,8 +85,6 @@ func TestIsUserNotFoundError(t *testing.T) {
 	}
 }
 
-// TestMapUserToState_NeverSourcesPassword asserts that the password stored in
-// state always comes from config and is never populated from the API response.
 func TestMapUserToState_NeverSourcesPassword(t *testing.T) {
 	state := User{
 		ID:            types.StringValue("user-123"),

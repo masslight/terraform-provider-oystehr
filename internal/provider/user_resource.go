@@ -157,8 +157,7 @@ func convertUserToClientInvite(plan User) client.UserInvite {
 	return invite
 }
 
-// mapUserToState refreshes computed metadata from the API while preserving all
-// config-sourced values in state. The password is intentionally never sourced
+// mapUserToState refreshes computed metadata from the API while preserving all config-sourced values in state. The password is intentionally never sourced
 // from the API response.
 func mapUserToState(state User, apiUser *client.User) User {
 	retUser := state
@@ -167,8 +166,7 @@ func mapUserToState(state User, apiUser *client.User) User {
 	return retUser
 }
 
-// shouldRotatePassword reports whether the password should be re-applied, which
-// happens only when password_version is incremented.
+// shouldRotatePassword reports whether the password should be re-applied, which happens only when password_version is incremented.
 func shouldRotatePassword(state, plan User) bool {
 	return !state.PasswordVersion.IsNull() && state.PasswordVersion.ValueInt64() < plan.PasswordVersion.ValueInt64()
 }
