@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64default"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -89,26 +90,41 @@ func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 			"username": schema.StringAttribute{
 				Optional:    true,
-				Description: "The username of the user. Defaults to the email address if not set.",
+				Description: "The username of the user. Defaults to the email address if not set. Changing this forces a new user to be created.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"application_id": schema.StringAttribute{
 				Required:    true,
-				Description: "The ID of the application to invite the user to.",
+				Description: "The ID of the application to invite the user to. Changing this forces a new user to be created.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"resource_type": schema.StringAttribute{
 				Optional:    true,
 				Computed:    true,
-				Description: "The FHIR resource type to create as the user's profile. Must be either 'Practitioner' or 'Patient'.",
+				Description: "The FHIR resource type to create as the user's profile. Must be either 'Practitioner' or 'Patient'. Changing this forces a new user to be created.",
 				Default:     stringdefault.StaticString("Practitioner"),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"profile": schema.StringAttribute{
 				Optional:    true,
-				Description: "An existing FHIR profile reference to associate with the user. If set, no new profile resource is created.",
+				Description: "An existing FHIR profile reference to associate with the user. If set, no new profile resource is created. Changing this forces a new user to be created.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"roles": schema.ListAttribute{
 				ElementType: types.StringType,
 				Optional:    true,
-				Description: "A list of role IDs to assign to the user.",
+				Description: "A list of role IDs to assign to the user. Changing this forces a new user to be created.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplace(),
+				},
 			},
 			"password": schema.StringAttribute{
 				Required:    true,
@@ -225,6 +241,46 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	retUser := state
 	retUser.ID = stringPointerToTfString(user.ID)
 	retUser.Email = stringPointerToTfString(user.Email)
+	retIdentity := IDIdentityModel{ID: retUser.ID}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
+}
+
+func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan User
+	var state User
+
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	stateIdentity := IDIdentityModel{ID: state.ID}
+
+	// Only re-apply the password when password_version is incremented.
+	if !state.PasswordVersion.IsNull() && state.PasswordVersion.ValueInt64() < plan.PasswordVersion.ValueInt64() {
+		_, err := retry.RetryWithBackoff(ctx, func() (struct{}, error) {
+			return struct{}{}, r.client.User.ChangePassword(ctx, state.ID.ValueString(), plan.Password.ValueString())
+		}, retry.RetryConfig{
+			BaseBackoff:   retry.BaseBackoffDefault,
+			MaxBackoff:    retry.MaxBackoffDefault,
+			MaxDuration:   retry.MaxDurationDefault,
+			MaxAttempts:   retry.MaxAttemptsDefault,
+			DisableJitter: false,
+		})
+		if err != nil {
+			resp.Diagnostics.AddError("Error Setting User Password", err.Error())
+			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
+			return
+		}
+	}
+
+	retUser := plan
+	retUser.ID = state.ID
 	retIdentity := IDIdentityModel{ID: retUser.ID}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
