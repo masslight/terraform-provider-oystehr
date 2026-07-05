@@ -286,3 +286,19 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, retIdentity)...)
 }
+
+func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state User
+
+	diags := req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.client.User.DeleteUser(ctx, state.ID.ValueString())
+	if err != nil && !strings.Contains(err.Error(), "unexpected status code: 404") {
+		resp.Diagnostics.AddError("Error Deleting User", err.Error())
+		return
+	}
+}
