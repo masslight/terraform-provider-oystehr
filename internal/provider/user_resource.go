@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/masslight/terraform-provider-oystehr/internal/client"
+	"github.com/masslight/terraform-provider-oystehr/internal/retry"
 )
 
 type User struct {
@@ -121,4 +122,67 @@ func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 		},
 	}
+}
+
+func convertUserToClientInvite(plan User) client.UserInvite {
+	invite := client.UserInvite{
+		Email:         tfStringToStringPointer(plan.Email),
+		Username:      tfStringToStringPointer(plan.Username),
+		ApplicationID: tfStringToStringPointer(plan.ApplicationID),
+		Profile:       tfStringToStringPointer(plan.Profile),
+		Roles:         convertListToStringSlice(plan.Roles),
+	}
+	if !plan.ResourceType.IsNull() && !plan.ResourceType.IsUnknown() {
+		invite.Resource = map[string]any{
+			"resourceType": plan.ResourceType.ValueString(),
+		}
+	}
+	return invite
+}
+
+func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan User
+
+	diags := req.Plan.Get(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	invite := convertUserToClientInvite(plan)
+
+	createdUser, err := r.client.User.InviteUser(ctx, &invite)
+	if err != nil {
+		resp.Diagnostics.AddError("Error Inviting User", err.Error())
+		return
+	}
+	if createdUser == nil || createdUser.ID == nil {
+		resp.Diagnostics.AddError("Error Inviting User", "invite response did not include a user ID")
+		return
+	}
+
+	userID := *createdUser.ID
+
+	// Setting the password may briefly fail while the newly invited user
+	// propagates in Auth0, so retry on transient errors.
+	_, err = retry.RetryWithBackoff(ctx, func() (struct{}, error) {
+		return struct{}{}, r.client.User.ChangePassword(ctx, userID, plan.Password.ValueString())
+	}, retry.RetryConfig{
+		BaseBackoff:   retry.BaseBackoffDefault,
+		MaxBackoff:    retry.MaxBackoffDefault,
+		MaxDuration:   retry.MaxDurationDefault,
+		MaxAttempts:   retry.MaxAttemptsDefault,
+		DisableJitter: false,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error Setting User Password", err.Error())
+		return
+	}
+
+	retUser := plan
+	retUser.ID = stringPointerToTfString(createdUser.ID)
+	identity := IDIdentityModel{ID: retUser.ID}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
+	resp.Diagnostics.Append(resp.Identity.Set(ctx, identity)...)
 }
