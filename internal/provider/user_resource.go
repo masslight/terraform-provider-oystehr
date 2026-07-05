@@ -157,6 +157,27 @@ func convertUserToClientInvite(plan User) client.UserInvite {
 	return invite
 }
 
+// mapUserToState refreshes computed metadata from the API while preserving all
+// config-sourced values in state. The password is intentionally never sourced
+// from the API response.
+func mapUserToState(state User, apiUser *client.User) User {
+	retUser := state
+	retUser.ID = stringPointerToTfString(apiUser.ID)
+	retUser.Email = stringPointerToTfString(apiUser.Email)
+	return retUser
+}
+
+// shouldRotatePassword reports whether the password should be re-applied, which
+// happens only when password_version is incremented.
+func shouldRotatePassword(state, plan User) bool {
+	return !state.PasswordVersion.IsNull() && state.PasswordVersion.ValueInt64() < plan.PasswordVersion.ValueInt64()
+}
+
+// isUserNotFoundError reports whether the error represents a 404 response.
+func isUserNotFoundError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "unexpected status code: 404")
+}
+
 func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan User
 
@@ -228,7 +249,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	user, err := r.client.User.GetUser(ctx, id)
 	if err != nil {
-		if strings.Contains(err.Error(), "unexpected status code: 404") {
+		if isUserNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
 			resp.Diagnostics.Append(resp.Identity.Set(ctx, stateIdentity)...)
 			return
@@ -238,9 +259,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	// Map metadata only; never read the password back from the API.
-	retUser := state
-	retUser.ID = stringPointerToTfString(user.ID)
-	retUser.Email = stringPointerToTfString(user.Email)
+	retUser := mapUserToState(state, user)
 	retIdentity := IDIdentityModel{ID: retUser.ID}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, retUser)...)
@@ -262,7 +281,7 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	stateIdentity := IDIdentityModel{ID: state.ID}
 
 	// Only re-apply the password when password_version is incremented.
-	if !state.PasswordVersion.IsNull() && state.PasswordVersion.ValueInt64() < plan.PasswordVersion.ValueInt64() {
+	if shouldRotatePassword(state, plan) {
 		_, err := retry.RetryWithBackoff(ctx, func() (struct{}, error) {
 			return struct{}{}, r.client.User.ChangePassword(ctx, state.ID.ValueString(), plan.Password.ValueString())
 		}, retry.RetryConfig{
@@ -297,7 +316,7 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	}
 
 	err := r.client.User.DeleteUser(ctx, state.ID.ValueString())
-	if err != nil && !strings.Contains(err.Error(), "unexpected status code: 404") {
+	if err != nil && !isUserNotFoundError(err) {
 		resp.Diagnostics.AddError("Error Deleting User", err.Error())
 		return
 	}
