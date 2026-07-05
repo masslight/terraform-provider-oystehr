@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-const (
+var (
 	userBaseURL = "https://project-api.zapehr.com/v1/user"
 )
 
