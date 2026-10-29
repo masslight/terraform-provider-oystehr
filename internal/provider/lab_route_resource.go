@@ -277,12 +277,7 @@ func (r *LabRouteResource) Create(ctx context.Context, req resource.CreateReques
 
 	clientLabRoute := convertLabRouteToClientLabRoute(ctx, plan)
 
-	// Validate
-	if clientLabRoute.PrimaryPhone != nil && !phoneRegexp.MatchString(*clientLabRoute.PrimaryPhone) {
-		resp.Diagnostics.AddError(
-			"Invalid Primary Phone",
-			"The primary phone number must be in the format (123) 456-7890.",
-		)
+	if validateLabRoute(clientLabRoute, resp) {
 		return
 	}
 
@@ -299,6 +294,24 @@ func (r *LabRouteResource) Create(ctx context.Context, req resource.CreateReques
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &ret)...)
 	resp.Diagnostics.Append(resp.Identity.Set(ctx, &identity)...)
+}
+
+func validateLabRoute(clientLabRoute client.LabRoute, resp *resource.CreateResponse) bool {
+	if clientLabRoute.PrimaryPhone != nil && !phoneRegexp.MatchString(*clientLabRoute.PrimaryPhone) {
+		resp.Diagnostics.AddError(
+			"Invalid Primary Phone",
+			"The primary phone number must be in the format (123) 456-7890.",
+		)
+		return true
+	}
+	if clientLabRoute.PrimaryAddress != nil && clientLabRoute.PrimaryAddress.Address2 != nil && *clientLabRoute.PrimaryAddress.Address2 == "" {
+		resp.Diagnostics.AddError(
+			"Invalid Primary Address Line 2",
+			"The primary address line 2 cannot be an empty string.",
+		)
+		return true
+	}
+	return false
 }
 
 func (r *LabRouteResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
