@@ -20,24 +20,22 @@ const (
 type Runtime string
 
 const (
-	RuntimeNodejs18  Runtime = "nodejs18.x"
-	RuntimeNodejs20  Runtime = "nodejs20.x"
 	RuntimeNodejs22  Runtime = "nodejs22.x"
+	RuntimeNodejs24  Runtime = "nodejs24.x"
 	RuntimePython313 Runtime = "python3.13"
 	RuntimePython312 Runtime = "python3.12"
 	RuntimeJava21    Runtime = "java21"
-	RuntimeDotnet9   Runtime = "dotnet9"
+	RuntimeDotnet8   Runtime = "dotnet8"
 	RuntimeRuby33    Runtime = "ruby3.3"
 )
 
 var ValidRuntimes = []string{
-	string(RuntimeNodejs18),
-	string(RuntimeNodejs20),
 	string(RuntimeNodejs22),
+	string(RuntimeNodejs24),
 	string(RuntimePython313),
 	string(RuntimePython312),
 	string(RuntimeJava21),
-	string(RuntimeDotnet9),
+	string(RuntimeDotnet8),
 	string(RuntimeRuby33),
 }
 
