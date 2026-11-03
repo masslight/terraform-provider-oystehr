@@ -1,12 +1,12 @@
 module github.com/masslight/terraform-provider-oystehr
 
-go 1.24.2
+go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
 	github.com/hashicorp/terraform-plugin-go v0.29.0
-	github.com/hashicorp/terraform-plugin-log v0.10.0
+	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
 
