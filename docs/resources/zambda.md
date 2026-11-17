@@ -25,6 +25,7 @@ description: |-
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `memory_size` (Number) The memory size allocated for the Zambda function in MB.
+- `raw` (Boolean) Whether the Zambda function returns its raw HTTP response (status, headers, and body) instead of Oystehr's wrapped response. Only meaningful for the http_auth and http_open trigger methods.
 - `schedule` (Attributes) The schedule for the Zambda function. (see [below for nested schema](#nestedatt--schedule))
 - `source` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) The pre-bundled source code of the Zambda function.
 - `timeout` (Number) The timeout for the Zambda function in seconds.
