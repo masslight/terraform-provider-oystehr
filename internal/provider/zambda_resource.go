@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32default"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -57,6 +58,7 @@ type Zambda struct {
 	FileInfo       types.Object `tfsdk:"file_info"`
 	Source         types.String `tfsdk:"source"`          // Pre-bundled source code of the Zambda function
 	SourceChecksum types.String `tfsdk:"source_checksum"` // Checksum of the Zambda source code
+	Raw            types.Bool   `tfsdk:"raw"`
 }
 
 type ZambdaV0 = Zambda
@@ -92,6 +94,7 @@ func convertZambdaToClientZambda(ctx context.Context, zambda Zambda) client.Zamb
 		Status:           tfStringToStringPointer(zambda.Status),
 		TriggerMethod:    (*client.TriggerMethod)(zambda.TriggerMethod.ValueStringPointer()),
 		Schedule:         schedule,
+		Raw:              tfBoolToBoolPointer(zambda.Raw),
 	}
 }
 
@@ -169,6 +172,7 @@ func convertClientZambdaToZambda(ctx context.Context, clientZambda *client.Zambd
 		Schedule:       schedule,
 		FileInfo:       fi,
 		SourceChecksum: types.StringValue(sourceChecksum),
+		Raw:            boolPointerToTfBool(clientZambda.Raw),
 	}
 	return zambda
 }
@@ -394,7 +398,8 @@ func zambdaFunctionFieldsChanged(plan, state Zambda) bool {
 		!plan.MemorySize.Equal(state.MemorySize) ||
 		!plan.Timeout.Equal(state.Timeout) ||
 		!plan.TriggerMethod.Equal(state.TriggerMethod) ||
-		!plan.Schedule.Equal(state.Schedule)
+		!plan.Schedule.Equal(state.Schedule) ||
+		!plan.Raw.Equal(state.Raw)
 }
 
 func (r *ZambdaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -679,6 +684,12 @@ var (
 				Description: "The trigger method for the Zambda function.",
 				// TODO enum values
 				Default: stringdefault.StaticString("http_auth"),
+			},
+			"raw": schema.BoolAttribute{
+				Optional:    true,
+				Computed:    true,
+				Description: "Whether the Zambda function returns its raw HTTP response (status, headers, and body) instead of Oystehr's wrapped response. Only meaningful for the http_auth and http_open trigger methods.",
+				Default:     booldefault.StaticBool(false),
 			},
 			"schedule": schema.SingleNestedAttribute{
 				Optional:    true,
