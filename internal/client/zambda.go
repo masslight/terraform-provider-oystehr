@@ -59,6 +59,7 @@ type ZambdaFunction struct {
 	TimeoutInSeconds *int32          `json:"timeoutInSeconds,omitempty"`
 	TriggerMethod    *TriggerMethod  `json:"triggerMethod,omitempty"`
 	Schedule         *ZambdaSchedule `json:"schedule,omitempty"`
+	Raw              *bool           `json:"raw,omitempty"`
 	Status           *string         `json:"status,omitempty"`
 	FileInfo         *FileInfo       `json:"fileInfo,omitempty"`
 }
